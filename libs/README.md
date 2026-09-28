@@ -1,13 +1,5 @@
-# Local BuildCraft Community Edition jars
+# Local libraries
 
-BCCE 8.0.14 is not yet published, so ITCE defaults to local BuildCraft dependencies.
+Iron Tanks does not require a locally staged BuildCraft jar. BCCE is resolved directly from Modrinth Maven using the exact version pinned for each target.
 
-Place these files directly in this directory:
-
-- `BuildCraft-Community-Edition-8.0.14+1.19.2+forge.jar`
-- `BuildCraft-Community-Edition-8.0.14+1.20.1+forge.jar`
-- `BuildCraft-Community-Edition-8.0.14+1.21.1+neoforge.jar`
-
-They are the normal production jars collected by BCCE's corresponding `legacy`/`modern` `buildAndCollect` tasks.
-
-After BCCE 8.0.14 is published, use `-Pbcce_dependency_mode=modrinth` to resolve the matching target from Modrinth Maven instead.
+This directory is intentionally kept only as a placeholder for developer-only local libraries that may be needed in the future; production BuildCraft dependencies must not be placed here.

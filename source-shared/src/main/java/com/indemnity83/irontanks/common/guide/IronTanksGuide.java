@@ -6,7 +6,6 @@ import buildcraft.api.v2.guide.GuideEntry;
 import buildcraft.api.v2.guide.GuidePages;
 import buildcraft.api.v2.guide.GuideSection;
 import com.indemnity83.irontanks.IronTanks;
-import net.minecraft.resources.ResourceLocation;
 
 /** Registers Iron Tanks documentation through BuildCraft Extension API 2. */
 public final class IronTanksGuide {
@@ -28,9 +27,9 @@ public final class IronTanksGuide {
 
     public static void register() {
         ContentRegistrar content = BuildCraftContent.addon(IronTanks.MODID);
-        ResourceLocation root = content.id("guide");
-        ResourceLocation tanks = content.id("guide/tanks");
-        ResourceLocation upgrades = content.id("guide/upgrades");
+        var root = content.id("guide");
+        var tanks = content.id("guide/tanks");
+        var upgrades = content.id("guide/upgrades");
 
         content.guideSection(GuideSection.builder(root, "irontanks.guide.section.root")
             .icon(content.id("iron_tank"))
@@ -47,14 +46,15 @@ public final class IronTanksGuide {
             .order(100)
             .build());
 
-        registerEntries(content, tanks, TANKS, true);
-        registerEntries(content, upgrades, UPGRADES, false);
+        registerEntries(content, "guide/tanks", TANKS, true);
+        registerEntries(content, "guide/upgrades", UPGRADES, false);
     }
 
-    private static void registerEntries(ContentRegistrar content, ResourceLocation section, String[] names, boolean blocks) {
+    private static void registerEntries(ContentRegistrar content, String sectionPath, String[] names, boolean blocks) {
+        var section = content.id(sectionPath);
         for (int index = 0; index < names.length; index++) {
             String name = names[index];
-            ResourceLocation itemId = content.id(name);
+            var itemId = content.id(name);
             String titleKey = (blocks ? "block." : "item.") + IronTanks.MODID + "." + name;
             String guideKey = "irontanks.guide." + name;
             content.guideEntry(GuideEntry.builder(content.id("guide/" + name), section, titleKey)

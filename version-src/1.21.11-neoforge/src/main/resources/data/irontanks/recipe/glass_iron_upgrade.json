@@ -1,0 +1,18 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "pattern": [
+    "igi",
+    "g g",
+    "igi"
+  ],
+  "key": {
+    "i": "#c:ingots/iron",
+    "g": [
+      "#c:glass_panes/colorless",
+      "#c:glass_panes"
+    ]
+  },
+  "result": {
+    "id": "irontanks:glass_iron_upgrade"
+  }
+}

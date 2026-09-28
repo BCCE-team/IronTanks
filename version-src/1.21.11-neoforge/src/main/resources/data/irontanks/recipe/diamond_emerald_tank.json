@@ -1,0 +1,19 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "pattern": [
+    " g ",
+    "gtg",
+    "ege"
+  ],
+  "key": {
+    "e": "#c:gems/emerald",
+    "g": [
+      "#c:glass_blocks/colorless",
+      "#c:glass_blocks"
+    ],
+    "t": "irontanks:diamond_tank"
+  },
+  "result": {
+    "id": "irontanks:emerald_tank"
+  }
+}

@@ -138,28 +138,13 @@ neoForge {
     }
 }
 
-def bcceDependencyMode = (project.findProperty('bcce_dependency_mode') ?: requiredProperty('deps.buildcraft.mode'))
-        .toString().trim().toLowerCase(Locale.ROOT)
-if (!(bcceDependencyMode in ['local', 'modrinth'])) {
-    throw new GradleException("Unsupported bcce_dependency_mode='${bcceDependencyMode}'. Expected 'local' or 'modrinth'.")
-}
+def buildCraftCoordinate = "maven.modrinth:${requiredProperty('deps.buildcraft.modrinth_project')}:${requiredProperty('buildcraft.version')}"
 
 dependencies {
-    if (bcceDependencyMode == 'local') {
-        def localBuildCraftJar = new File(repositoryRoot, requiredProperty('buildcraft.local_jar'))
-        if (!localBuildCraftJar.isFile()) {
-            throw new GradleException(
-                    "Iron Tanks ${targetName}: local BCCE jar not found: ${localBuildCraftJar}. " +
-                    "Build BCCE first or use -Pbcce_dependency_mode=modrinth after the target is published.")
-        }
-        implementation files(localBuildCraftJar)
-        logger.lifecycle("Iron Tanks ${targetName}: using local BCCE jar ${localBuildCraftJar.name}")
-    } else {
-        def coordinate = "maven.modrinth:${requiredProperty('deps.buildcraft.modrinth_project')}:${requiredProperty('buildcraft.version')}"
-        implementation coordinate
-        logger.lifecycle("Iron Tanks ${targetName}: using ${coordinate}")
-    }
+    implementation buildCraftCoordinate
 }
+
+logger.lifecycle("Iron Tanks ${targetName}: using ${buildCraftCoordinate}")
 
 def resourceProperties = [
         mod_id                  : requiredProperty('mod.id'),

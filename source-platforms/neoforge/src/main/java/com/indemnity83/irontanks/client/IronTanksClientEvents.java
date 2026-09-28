@@ -13,7 +13,13 @@ import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.client.event.EntityRenderersEvent;
 
+//? if >=1.21.11 {
+@EventBusSubscriber(modid = IronTanks.MODID, value = Dist.CLIENT)
+//? } else {
+/*?
 @EventBusSubscriber(modid = IronTanks.MODID, bus = EventBusSubscriber.Bus.MOD, value = Dist.CLIENT)
+?*/
+//? }
 public final class IronTanksClientEvents {
     private IronTanksClientEvents() {
     }
@@ -26,7 +32,7 @@ public final class IronTanksClientEvents {
     }
 
     @SuppressWarnings({"unchecked", "rawtypes"})
-    private static <T extends TileTank> BlockEntityRendererProvider<T> tankRendererProvider() {
+    private static BlockEntityRendererProvider tankRendererProvider() {
         return context -> (BlockEntityRenderer) new RenderTank(context);
     }
 }

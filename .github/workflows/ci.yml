@@ -55,13 +55,6 @@ jobs:
       - name: Checkout Iron Tanks
         uses: actions/checkout@v4
 
-      - name: Checkout BuildCraft Community Edition
-        uses: actions/checkout@v4
-        with:
-          repository: CurativeTree/BuildCraft
-          ref: main
-          path: .ci/BuildCraft
-
       - name: Set up Java toolchains
         uses: actions/setup-java@v4
         with:
@@ -79,26 +72,7 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
 
       - name: Make wrappers executable
-        run: |
-          chmod +x builds/legacy/gradlew builds/modern/gradlew build-all.sh scripts/source_layout.py
-          chmod +x .ci/BuildCraft/builds/legacy/gradlew .ci/BuildCraft/builds/modern/gradlew
-
-      - name: Build matching BCCE generation
-        shell: bash
-        run: |
-          set -euo pipefail
-          cd ".ci/BuildCraft/builds/${BUILD_GENERATION}"
-          ./gradlew --no-daemon --console=plain --stacktrace buildAndCollect
-
-      - name: Stage local BCCE jars
-        shell: bash
-        run: |
-          set -euo pipefail
-          mkdir -p libs
-          find ".ci/BuildCraft/build/libs/${BUILD_GENERATION}/8.0.14" -maxdepth 1 -type f \
-            -name 'BuildCraft-Community-Edition-8.0.14+*.jar' -exec cp {} libs/ \;
-          echo "Staged BCCE jars:"
-          ls -1 libs/*.jar
+        run: chmod +x builds/legacy/gradlew builds/modern/gradlew build-all.sh scripts/source_layout.py
 
       - name: Build Iron Tanks generation
         shell: bash

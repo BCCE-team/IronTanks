@@ -22,7 +22,13 @@ public final class VoidTankTile extends TankTile {
     @Override
     public void update() {
         super.update();
+        //? if >=1.21.11 {
+        if (level == null || level.isClientSide()) {
+        //? } else {
+        /*?
         if (level == null || level.isClientSide) {
+        ?*/
+        //? }
             return;
         }
 

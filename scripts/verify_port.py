@@ -62,6 +62,59 @@ def read_json(path: Path):
         return {}
 
 
+def collect_recipe_tags(value) -> set[str]:
+    tags: set[str] = set()
+    if isinstance(value, dict):
+        tag = value.get('tag')
+        if isinstance(tag, str):
+            tags.add(tag)
+        for child in value.values():
+            tags.update(collect_recipe_tags(child))
+    elif isinstance(value, list):
+        for child in value:
+            tags.update(collect_recipe_tags(child))
+    elif isinstance(value, str) and value.startswith('#'):
+        tags.add(value[1:])
+    return tags
+
+
+def validate_recipe_tags(target: str, resources: Path) -> None:
+    modern = target.endswith('neoforge')
+    recipe_dir = resources / ('data/irontanks/recipe' if modern else 'data/irontanks/recipes')
+    recipes = sorted(recipe_dir.glob('*.json'))
+    if len(recipes) != 30:
+        fail(f'{target}: expected 30 active crafting recipes, found {len(recipes)}')
+        return
+
+    tags: set[str] = set()
+    for recipe in recipes:
+        tags.update(collect_recipe_tags(read_json(recipe)))
+
+    if modern:
+        leaked_forge = sorted(tag for tag in tags if tag.startswith('forge:'))
+        if leaked_forge:
+            fail(f'{target}: legacy Forge recipe tags leaked into NeoForge recipes: {leaked_forge}')
+        obsolete_glass = sorted(tag for tag in tags if tag in {'c:glass', 'c:glass/colorless'})
+        if obsolete_glass:
+            fail(f'{target}: obsolete NeoForge glass tags remain: {obsolete_glass}')
+        for required in (
+            'c:glass_blocks', 'c:glass_blocks/colorless',
+            'c:glass_panes', 'c:glass_panes/colorless',
+        ):
+            if required not in tags:
+                fail(f'{target}: expected common recipe tag is missing: {required}')
+    else:
+        leaked_common = sorted(tag for tag in tags if tag.startswith('c:'))
+        if leaked_common:
+            fail(f'{target}: NeoForge common tags leaked into Forge recipes: {leaked_common}')
+        for required in (
+            'forge:glass', 'forge:glass/colorless',
+            'forge:glass_panes', 'forge:glass_panes/colorless',
+        ):
+            if required not in tags:
+                fail(f'{target}: expected Forge recipe tag is missing: {required}')
+
+
 def validate_common_resources() -> None:
     resources = ROOT / 'source-shared/src/main/resources/assets/irontanks'
     lang = resources / 'lang/en_us.json'
@@ -114,15 +167,30 @@ def validate_target(target: str, props: dict[str, str]) -> None:
     ):
         if required not in java_text:
             fail(f'{target}: missing required port behavior {required!r}')
-    if target.endswith('neoforge') and 'Capabilities.FluidHandler.BLOCK' not in java_text:
-        fail(f'{target}: NeoForge fluid capability registration is missing')
+    if target == '1.21.11-neoforge':
+        if 'Capabilities.Fluid.BLOCK' not in java_text or 'TransferInterop.exportFluids' not in java_text:
+            fail(f'{target}: NeoForge resource fluid capability bridge is missing')
+        if 'EventBusSubscriber.Bus.MOD' in java_text or 'bus = EventBusSubscriber.Bus.MOD' in java_text:
+            fail(f'{target}: removed NeoForge 21.11 EventBusSubscriber bus selector remains')
+        if '@EventBusSubscriber(modid = IronTanks.MODID, value = Dist.CLIENT)' not in java_text:
+            fail(f'{target}: client mod event subscriber is not using the NeoForge 21.11 annotation shape')
+    elif target.endswith('neoforge'):
+        if 'Capabilities.FluidHandler.BLOCK' not in java_text:
+            fail(f'{target}: NeoForge fluid capability registration is missing')
+        if '@EventBusSubscriber(modid = IronTanks.MODID, bus = EventBusSubscriber.Bus.MOD, value = Dist.CLIENT)' not in java_text:
+            fail(f'{target}: legacy NeoForge client events must remain explicitly subscribed to the MOD bus')
 
     blocks_path = java_root / 'com/indemnity83/irontanks/common/registry/IronTanksBlocks.java'
     items_path = java_root / 'com/indemnity83/irontanks/common/registry/IronTanksItems.java'
     blocks = blocks_path.read_text(encoding='utf-8')
     items = items_path.read_text(encoding='utf-8')
     for field, (class_name, capacity, hardness, resistance) in BLOCK_SPECS.items():
-        if field == 'CREATIVE_TANK':
+        if target.endswith('neoforge'):
+            if field == 'CREATIVE_TANK':
+                pattern = rf'{field}\s*=\s*registerTank\("creative_tank",\s*properties\s*->\s*new\s+{class_name}\({capacity},\s*properties\)\)'
+            else:
+                pattern = rf'{field}\s*=\s*registerTank\("[a-z_]+",\s*properties\s*->\s*new\s+{class_name}\({capacity},\s*{re.escape(hardness)},\s*{re.escape(resistance)},\s*properties\)\)'
+        elif field == 'CREATIVE_TANK':
             pattern = rf'{field}\s*=\s*BLOCKS\.register\("creative_tank",\s*\(\)\s*->\s*new\s+{class_name}\({capacity}\)\)'
         else:
             pattern = rf'{field}\s*=\s*BLOCKS\.register\("[a-z_]+",\s*\(\)\s*->\s*new\s+{class_name}\({capacity},\s*{re.escape(hardness)},\s*{re.escape(resistance)}\)\)'
@@ -142,13 +210,26 @@ def validate_target(target: str, props: dict[str, str]) -> None:
     expected_pack = (
         int(prop(props, target, 'pack.format')),
         int(prop(props, target, 'pack.resource_format')),
-        int(prop(props, target, 'pack.data_format')),
+        float(prop(props, target, 'pack.data_format')),
     )
     actual_pack = (
-        pack.get('pack_format'), pack.get('forge:resource_pack_format'), pack.get('forge:data_pack_format')
+        pack.get('pack_format'), pack.get('forge:resource_pack_format'), float(pack.get('forge:data_pack_format'))
     )
     if actual_pack != expected_pack:
         fail(f'{target}: pack formats {actual_pack} != {expected_pack}')
+
+    validate_recipe_tags(target, resources)
+
+    if target == '1.21.11-neoforge':
+        legacy_models = {path.stem for path in (resources / 'assets/irontanks/models/item').glob('*.json')}
+        client_items = {path.stem for path in (resources / 'assets/irontanks/items').glob('*.json')}
+        if client_items != legacy_models:
+            fail(f'{target}: client item definitions do not cover all item models')
+        for recipe in (resources / 'data/irontanks/recipe').glob('*.json'):
+            recipe_data = read_json(recipe)
+            encoded = json.dumps(recipe_data)
+            if '"item":' in encoded or '"tag":' in encoded:
+                fail(f'{target}: legacy ingredient object remains in {recipe.relative_to(output)}')
 
     loader = target.rsplit('-', 1)[1]
     metadata_rel = 'META-INF/neoforge.mods.toml' if loader == 'neoforge' else 'META-INF/mods.toml'
@@ -191,14 +272,20 @@ def validate_build_files() -> None:
         text = (ROOT / relative).read_text(encoding='utf-8')
         for token in (
             "providers.gradleProperty('pythonExecutable')", 'sourceLayoutScript', 'prepareEffectiveSource',
-            "project.findProperty('bcce_dependency_mode')", "requiredProperty('buildcraft.local_jar')",
-            "requiredProperty('buildcraft.version')", "tasks.register('buildAndCollect'",
+            "requiredProperty('deps.buildcraft.modrinth_project')", "requiredProperty('buildcraft.version')",
+            'maven.modrinth', "tasks.register('buildAndCollect'",
         ):
             if token not in text:
                 fail(f'{relative}: missing build architecture token {token!r}')
-    if "fg.deobf(files(localBuildCraftJar))" not in (ROOT / 'builds/legacy/build.forge.gradle').read_text(encoding='utf-8'):
-        fail('Forge local BCCE dependency is not deobfuscated')
+        for forbidden in ('bcce_dependency_mode', 'buildcraft.local_jar', 'localBuildCraftJar'):
+            if forbidden in text:
+                fail(f'{relative}: obsolete local BCCE dependency token remains: {forbidden!r}')
+    forge = (ROOT / 'builds/legacy/build.forge.gradle').read_text(encoding='utf-8')
+    if 'implementation fg.deobf(buildCraftCoordinate)' not in forge:
+        fail('Forge BCCE Maven dependency is not deobfuscated')
     neo = (ROOT / 'builds/modern/build.neoforge.gradle').read_text(encoding='utf-8')
+    if 'implementation buildCraftCoordinate' not in neo:
+        fail('NeoForge BCCE Maven dependency is not configured as implementation')
     if "createMinecraftArtifacts" not in neo or 'dependsOn prepareEffectiveSource' not in neo:
         fail('NeoForge Minecraft artifact creation is not ordered after source materialization')
 
@@ -212,8 +299,12 @@ def main() -> None:
     props = load_properties()
     if prop(props, '1.19.2-forge', 'mod.license') != 'MIT':
         fail('ITCE must preserve the original MIT license')
-    if prop(props, '1.19.2-forge', 'deps.buildcraft.mode') != 'local':
-        fail('BCCE dependency mode must default to local while 8.0.14 is unreleased')
+    if prop(props, '1.19.2-forge', 'deps.buildcraft.modrinth_project') != 'z3Aj5eOl':
+        fail('BCCE Modrinth Maven project ID must remain pinned to z3Aj5eOl')
+    for target in target_ids(props):
+        expected = f"8.0.21+{target.replace('-', '+')}"
+        if prop(props, target, 'buildcraft.version') != expected:
+            fail(f'{target}: BCCE Maven version must be pinned to {expected}')
 
     validate_common_resources()
     validate_build_files()

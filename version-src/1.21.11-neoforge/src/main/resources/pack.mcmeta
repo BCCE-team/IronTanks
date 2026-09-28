@@ -1,0 +1,10 @@
+{
+  "pack": {
+    "description": "Iron Tanks resources and data for 1.21.11-neoforge",
+    "pack_format": 75,
+    "min_format": 75,
+    "max_format": 75,
+    "forge:resource_pack_format": 75,
+    "forge:data_pack_format": 94.1
+  }
+}

@@ -20,6 +20,7 @@ This generation owns the ForgeGradle targets and has its own Gradle wrapper and 
 Targets:
 
 - `1.21.1-neoforge`
+- `1.21.11-neoforge`
 
 Build root: `builds/modern`
 
@@ -50,7 +51,8 @@ source-platforms/
 version-src/
 ├─ 1.19.2-forge/
 ├─ 1.20.1-forge/
-└─ 1.21.1-neoforge/             target-only metadata and resources
+├─ 1.21.1-neoforge/             target-only metadata and resources
+└─ 1.21.11-neoforge/            target-only metadata, migrated recipes and client item definitions
 ```
 
 Each target is materialized as:
@@ -120,10 +122,10 @@ python scripts/verify_port.py
 
 ## BuildCraft dependency
 
-BCCE 8.0.14 is unreleased, so local jars are the default. Put the matching jars in `libs/` using the names documented in `libs/README.md`.
+BCCE is a normal remote dependency resolved from Modrinth Maven. The shared configuration pins the BCCE Modrinth project ID, while each target pins its exact version number:
 
-When matching BCCE artifacts are published, a build can be switched explicitly with:
-
-```bash
-./gradlew buildAndCollect -Pbcce_dependency_mode=modrinth
+```text
+maven.modrinth:z3Aj5eOl:8.0.21+<minecraft>+<loader>
 ```
+
+Forge targets pass the dependency through `fg.deobf(...)`; NeoForge targets use the normal ModDevGradle `implementation` configuration. No locally staged BCCE jar is required.

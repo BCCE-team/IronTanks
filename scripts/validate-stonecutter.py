@@ -86,8 +86,8 @@ def validate_generation(name: str, targets: list[str], props: dict[str, str]) ->
 
         for key in (
             "deps.minecraft", "java.version", "source.root", "source.platform_root", "source.overlay_root",
-            "loader.version_range", "minecraft.version_range", "buildcraft.version", "buildcraft.local_jar",
-            "buildcraft.version_range", "pack.format", "pack.resource_format", "pack.data_format",
+            "loader.version_range", "minecraft.version_range", "deps.buildcraft.modrinth_project",
+            "buildcraft.version", "buildcraft.version_range", "pack.format", "pack.resource_format", "pack.data_format",
         ):
             prop(props, target, key)
         prop(props, target, "deps.forge" if loader == "forge" else "deps.neoforge")
@@ -130,7 +130,7 @@ def main() -> None:
         if not (ROOT / name).is_file():
             fail(f"missing build orchestrator {name}")
 
-    required_targets = {"1.19.2-forge", "1.20.1-forge", "1.21.1-neoforge"}
+    required_targets = {"1.19.2-forge", "1.20.1-forge", "1.21.1-neoforge", "1.21.11-neoforge"}
     if set(targets) != required_targets:
         fail(f"production target matrix mismatch: {targets}")
 

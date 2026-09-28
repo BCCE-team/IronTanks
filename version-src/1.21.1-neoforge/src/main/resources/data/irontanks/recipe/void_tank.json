@@ -17,10 +17,10 @@
     },
     "g": [
       {
-        "tag": "c:glass/colorless"
+        "tag": "c:glass_blocks/colorless"
       },
       {
-        "tag": "c:glass"
+        "tag": "c:glass_blocks"
       }
     ]
   },

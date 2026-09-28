@@ -1,0 +1,19 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "pattern": [
+    " g ",
+    "gtg",
+    "dgd"
+  ],
+  "key": {
+    "d": "#c:ingots/gold",
+    "g": [
+      "#c:glass_blocks/colorless",
+      "#c:glass_blocks"
+    ],
+    "t": "irontanks:silver_tank"
+  },
+  "result": {
+    "id": "irontanks:gold_tank"
+  }
+}

@@ -46,7 +46,13 @@ public final class UpgradeItem extends Item {
         if (oldState.getBlock() != fromBlock) {
             return InteractionResult.PASS;
         }
+        //? if >=1.21.11 {
+        if (level.isClientSide()) {
+        //? } else {
+        /*?
         if (level.isClientSide) {
+        ?*/
+        //? }
             return InteractionResult.SUCCESS;
         }
         if (!(level.getBlockEntity(pos) instanceof TileTank oldTank)) {

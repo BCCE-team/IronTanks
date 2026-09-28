@@ -8,7 +8,7 @@ val targetConfiguration = Properties().apply {
     rootProject.file("targets.properties").inputStream().use { load(it) }
 }
 
-stonecutter active "1.21.1-neoforge" /* [SC] DO NOT EDIT */
+stonecutter active "1.21.11-neoforge" /* [SC] DO NOT EDIT */
 
 stonecutter {
     parameters {

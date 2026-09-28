@@ -10,16 +10,26 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.TooltipFlag;
+import net.minecraft.world.level.block.state.BlockBehaviour;
 import net.minecraft.world.level.block.state.BlockState;
 
 import java.util.List;
+import java.util.function.Consumer;
 
 public class TankBlock extends BlockTank {
     private static final int MILLIBUCKETS_PER_BUCKET = 1_000;
     private final int capacityBuckets;
 
+    public static BlockBehaviour.Properties createProperties() {
+        return defaultProperties();
+    }
+
     public TankBlock(int capacityBuckets, float hardness, float resistance) {
-        super(defaultProperties().strength(hardness, resistance).requiresCorrectToolForDrops().noOcclusion());
+        this(capacityBuckets, hardness, resistance, createProperties());
+    }
+
+    protected TankBlock(int capacityBuckets, float hardness, float resistance, BlockBehaviour.Properties properties) {
+        super(properties.strength(hardness, resistance).requiresCorrectToolForDrops().noOcclusion());
         this.capacityBuckets = capacityBuckets;
     }
 
@@ -36,16 +46,20 @@ public class TankBlock extends BlockTank {
         return new TankTile(pos, state, getCapacityMb());
     }
 
+    //? if <1.21.11 {
+    /*?
     @Override
     public void appendHoverText(ItemStack stack, Item.TooltipContext context, List<Component> tooltip, TooltipFlag flag) {
-        appendTankTooltip(tooltip);
+        appendTankTooltip(tooltip::add);
     }
+    ?*/
+    //? }
 
-    private void appendTankTooltip(List<Component> tooltip) {
-        tooltip.add(Component.translatable("irontanks.tooltip.capacity", capacityBuckets).withStyle(ChatFormatting.GRAY));
+    public final void appendTankTooltip(Consumer<Component> tooltip) {
+        tooltip.accept(Component.translatable("irontanks.tooltip.capacity", capacityBuckets).withStyle(ChatFormatting.GRAY));
         appendExtraTooltip(tooltip);
     }
 
-    protected void appendExtraTooltip(List<Component> tooltip) {
+    protected void appendExtraTooltip(Consumer<Component> tooltip) {
     }
 }

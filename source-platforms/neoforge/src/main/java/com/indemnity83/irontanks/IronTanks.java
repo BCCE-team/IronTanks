@@ -1,6 +1,9 @@
 package com.indemnity83.irontanks;
 
 import buildcraft.core.BCCore;
+//? if >=1.21.11 {
+import buildcraft.lib.compat.transfer.TransferInterop;
+//? }
 import com.indemnity83.irontanks.common.guide.IronTanksGuide;
 import com.indemnity83.irontanks.common.registry.IronTanksBlockEntities;
 import com.indemnity83.irontanks.common.registry.IronTanksBlocks;
@@ -32,10 +35,20 @@ public final class IronTanks {
     }
 
     private void registerCapabilities(RegisterCapabilitiesEvent event) {
-        // NeoForge capabilities belong to the loader, not BuildCraft's internal capability helpers.
+        //? if >=1.21.11 {
+        event.registerBlockEntity(Capabilities.Fluid.BLOCK, IronTanksBlockEntities.TANK.get(), (tank, side) ->
+                TransferInterop.exportFluids(() -> tank.isRemoved() ? null : tank, tank::setChanged));
+        event.registerBlockEntity(Capabilities.Fluid.BLOCK, IronTanksBlockEntities.CREATIVE_TANK.get(), (tank, side) ->
+                TransferInterop.exportFluids(() -> tank.isRemoved() ? null : tank, tank::setChanged));
+        event.registerBlockEntity(Capabilities.Fluid.BLOCK, IronTanksBlockEntities.VOID_TANK.get(), (tank, side) ->
+                TransferInterop.exportFluids(() -> tank.isRemoved() ? null : tank, tank::setChanged));
+        //? } else {
+        /*?
         // BuildCraft API2 discovers these native handlers through its platform fluid bridge.
         event.registerBlockEntity(Capabilities.FluidHandler.BLOCK, IronTanksBlockEntities.TANK.get(), (tank, side) -> tank);
         event.registerBlockEntity(Capabilities.FluidHandler.BLOCK, IronTanksBlockEntities.CREATIVE_TANK.get(), (tank, side) -> tank);
         event.registerBlockEntity(Capabilities.FluidHandler.BLOCK, IronTanksBlockEntities.VOID_TANK.get(), (tank, side) -> tank);
+        ?*/
+        //? }
     }
 }

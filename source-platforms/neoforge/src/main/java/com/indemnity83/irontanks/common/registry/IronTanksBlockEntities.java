@@ -1,6 +1,9 @@
 
 package com.indemnity83.irontanks.common.registry;
 
+//? if >=1.21.11 {
+import buildcraft.lib.compat.BlockEntityTypeCompat;
+//? }
 import com.indemnity83.irontanks.IronTanks;
 import com.indemnity83.irontanks.common.blockentity.CreativeTankTile;
 import com.indemnity83.irontanks.common.blockentity.TankTile;
@@ -18,13 +21,31 @@ public final class IronTanksBlockEntities {
     public static final DeferredRegister<BlockEntityType<?>> BLOCK_ENTITIES = DeferredRegister.create(Registries.BLOCK_ENTITY_TYPE, IronTanks.MODID);
 
     public static final Supplier<BlockEntityType<TankTile>> TANK = BLOCK_ENTITIES.register("tank", () ->
+            //? if >=1.21.11 {
+            BlockEntityTypeCompat.create(TankTile::new, normalTankBlocks()));
+            //? } else {
+            /*?
             BlockEntityType.Builder.of(TankTile::new, normalTankBlocks()).build(null));
+            ?*/
+            //? }
 
     public static final Supplier<BlockEntityType<CreativeTankTile>> CREATIVE_TANK = BLOCK_ENTITIES.register("creative_tank", () ->
+            //? if >=1.21.11 {
+            BlockEntityTypeCompat.create(CreativeTankTile::new, IronTanksBlocks.CREATIVE_TANK.get()));
+            //? } else {
+            /*?
             BlockEntityType.Builder.of(CreativeTankTile::new, IronTanksBlocks.CREATIVE_TANK.get()).build(null));
+            ?*/
+            //? }
 
     public static final Supplier<BlockEntityType<VoidTankTile>> VOID_TANK = BLOCK_ENTITIES.register("void_tank", () ->
+            //? if >=1.21.11 {
+            BlockEntityTypeCompat.create(VoidTankTile::new, IronTanksBlocks.VOID_TANK.get()));
+            //? } else {
+            /*?
             BlockEntityType.Builder.of(VoidTankTile::new, IronTanksBlocks.VOID_TANK.get()).build(null));
+            ?*/
+            //? }
 
     private IronTanksBlockEntities() {
     }

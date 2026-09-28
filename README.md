@@ -7,6 +7,7 @@ Unofficial community-maintained port of Iron Tanks for BuildCraft Community Edit
 - Minecraft 1.19.2 — Forge
 - Minecraft 1.20.1 — Forge
 - Minecraft 1.21.1 — NeoForge
+- Minecraft 1.21.11 — NeoForge
 
 The addon registers its BuildCraft Guide Book content through `buildcraft.api.v2` and uses loader-native fluid capabilities for platform integration.
 
@@ -15,7 +16,7 @@ The addon registers its BuildCraft Guide Book content through `buildcraft.api.v2
 ITCE mirrors BCCE's current build/source architecture:
 
 - **legacy** build generation — 1.19.2 Forge and 1.20.1 Forge;
-- **modern** build generation — 1.21.1 NeoForge and future modern targets.
+- **modern** build generation — 1.21.1 and 1.21.11 NeoForge, with 1.21.11 as the active modern target.
 
 Each generation has an independent Gradle wrapper, Stonecutter controller and target matrix under `builds/legacy` or `builds/modern`.
 
@@ -32,7 +33,7 @@ This keeps common Iron Tanks gameplay in one place while isolating loader regist
 
 ## Building
 
-BCCE 8.0.14 is currently consumed from local jars by default. Copy the matching BCCE production jars to `libs/` as described in [`libs/README.md`](libs/README.md), then run:
+BCCE 8.0.21 is resolved directly from Modrinth Maven. No local BuildCraft jars are required.
 
 ```bash
 ./build-all.sh
@@ -50,7 +51,7 @@ cd builds/modern
 ./gradlew buildAndCollect
 ```
 
-Once matching BCCE artifacts are published on Modrinth Maven, use `-Pbcce_dependency_mode=modrinth` to switch a build explicitly.
+Each target pins the matching BCCE artifact (`8.0.21+<minecraft>+<loader>`) so Forge and NeoForge builds cannot accidentally resolve a jar for another Minecraft version.
 
 ## Verification
 

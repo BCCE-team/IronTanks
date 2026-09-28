@@ -27,11 +27,6 @@ run-server/
 logs/
 mcmodsrepo/
 
-# Local BuildCraft jars
-libs/*.jar
-libs/**/*.jar
-!libs/**/README.md
-
 # Python caches
 __pycache__/
 *.pyc

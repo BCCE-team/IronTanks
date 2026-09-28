@@ -3,21 +3,27 @@ package com.indemnity83.irontanks.common.registry;
 
 import buildcraft.factory.BCFactoryBlocks;
 import com.indemnity83.irontanks.IronTanks;
+import com.indemnity83.irontanks.common.block.TankBlock;
 import com.indemnity83.irontanks.common.item.UpgradeItem;
+import net.minecraft.network.chat.Component;
 import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.TooltipFlag;
+//? if >=1.21.11 {
+import net.minecraft.world.item.component.TooltipDisplay;
+//? }
 import net.minecraft.world.level.block.Block;
 
-import net.minecraft.core.registries.Registries;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.neoforge.registries.DeferredRegister;
 
 import java.util.List;
+import java.util.function.Consumer;
 import java.util.function.Supplier;
 
 public final class IronTanksItems {
-    public static final DeferredRegister<Item> ITEMS = DeferredRegister.create(Registries.ITEM, IronTanks.MODID);
+    public static final DeferredRegister.Items ITEMS = DeferredRegister.createItems(IronTanks.MODID);
 
     public static final Supplier<BlockItem> COPPER_TANK = blockItem("copper_tank", IronTanksBlocks.COPPER_TANK);
     public static final Supplier<BlockItem> IRON_TANK = blockItem("iron_tank", IronTanksBlocks.IRON_TANK);
@@ -62,12 +68,18 @@ public final class IronTanksItems {
     private IronTanksItems() {
     }
 
-    private static Supplier<BlockItem> blockItem(String name, Supplier<? extends Block> block) {
-        return ITEMS.register(name, () -> new BlockItem(block.get(), new Item.Properties()));
+    private static Supplier<BlockItem> blockItem(String name, Supplier<? extends TankBlock> block) {
+        //? if >=1.21.11 {
+        return ITEMS.registerItem(name, properties -> new TankBlockItem(block.get(), properties.useBlockDescriptionPrefix()));
+        //? } else {
+        /*?
+        return ITEMS.registerItem(name, properties -> new BlockItem(block.get(), properties));
+        ?*/
+        //? }
     }
 
     private static Supplier<UpgradeItem> upgrade(String name, Supplier<? extends Block> from, Supplier<? extends Block> to) {
-        return ITEMS.register(name, () -> new UpgradeItem(new Item.Properties(), from, to));
+        return ITEMS.registerItem(name, properties -> new UpgradeItem(properties, from, to));
     }
 
     public static List<ItemStack> getCreativeTabItems() {
@@ -77,4 +89,21 @@ public final class IronTanksItems {
     public static void register(IEventBus bus) {
         ITEMS.register(bus);
     }
+
+    //? if >=1.21.11 {
+    private static final class TankBlockItem extends BlockItem {
+        private final TankBlock tankBlock;
+
+        private TankBlockItem(TankBlock block, Properties properties) {
+            super(block, properties);
+            this.tankBlock = block;
+        }
+
+        @Override
+        public void appendHoverText(ItemStack stack, Item.TooltipContext context, TooltipDisplay display, Consumer<Component> tooltip, TooltipFlag flag) {
+            super.appendHoverText(stack, context, display, tooltip, flag);
+            tankBlock.appendTankTooltip(tooltip);
+        }
+    }
+    //? }
 }
