@@ -26,7 +26,9 @@ public final class UpgradeItem extends Item {
         this.upgradeTo = upgradeTo;
     }
 
+    //? if <26.1.2 {
     @Override
+    //? }
     public InteractionResult onItemUseFirst(ItemStack stack, UseOnContext context) {
         return tryUpgrade(context, stack);
     }

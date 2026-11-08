@@ -8,6 +8,9 @@ Unofficial community-maintained port of Iron Tanks for BuildCraft Community Edit
 - Minecraft 1.20.1 — Forge
 - Minecraft 1.21.1 — NeoForge
 - Minecraft 1.21.11 — NeoForge
+- Minecraft 26.1.2 — NeoForge
+- Minecraft 26.2 — NeoForge
+- Minecraft 26.3 — NeoForge
 
 The addon registers its BuildCraft Guide Book content through `buildcraft.api.v2` and uses loader-native fluid capabilities for platform integration.
 
@@ -16,9 +19,10 @@ The addon registers its BuildCraft Guide Book content through `buildcraft.api.v2
 ITCE mirrors BCCE's current build/source architecture:
 
 - **legacy** build generation — 1.19.2 Forge and 1.20.1 Forge;
-- **modern** build generation — 1.21.1 and 1.21.11 NeoForge, with 1.21.11 as the active modern target.
+- **modern** build generation — 1.21.1 and 1.21.11 NeoForge;
+- **26.X** build generation — 26.1.2, 26.2 and 26.3 NeoForge (Java 25, Gradle 9.1.0, ModDevGradle 2.0.148).
 
-Each generation has an independent Gradle wrapper, Stonecutter controller and target matrix under `builds/legacy` or `builds/modern`.
+Each generation has an independent Gradle wrapper, Stonecutter controller and target matrix under `builds/legacy`, `builds/modern`, or `builds/26.X`.
 
 Targets are assembled from layered source roots:
 
@@ -33,7 +37,7 @@ This keeps common Iron Tanks gameplay in one place while isolating loader regist
 
 ## Building
 
-BCCE 8.0.21 is resolved directly from Modrinth Maven. No local BuildCraft jars are required.
+BCCE 8.0.26 is resolved directly from Modrinth Maven. No local BuildCraft jars are required.
 
 ```bash
 ./build-all.sh
@@ -51,7 +55,120 @@ cd builds/modern
 ./gradlew buildAndCollect
 ```
 
-Each target pins the matching BCCE artifact (`8.0.21+<minecraft>+<loader>`) so Forge and NeoForge builds cannot accidentally resolve a jar for another Minecraft version.
+```bash
+cd builds/26.X
+./gradlew buildAndCollect
+```
+
+Each target pins the matching BCCE artifact (`8.0.26+<minecraft>+<loader>`) so Forge and NeoForge builds cannot accidentally resolve a jar for another Minecraft version. The mod metadata requires **BCCE 8.0.24 or newer** at runtime.
+
+## Original Iron Tanks normal-tank behavior
+
+The 11 normal tiers (copper through tungstensteel, including obsidian) have **one
+and only one difference in fluid gameplay** from the standard BuildCraft tank:
+their per-block storage capacity. They extend the native BCCE `BlockTank` and
+`TileTank` classes rather than implementing their own transfer engine.
+
+- A vertical stack of compatible normal tiers, or a stack mixed with BuildCraft
+  glass tanks, acts as one logical storage column: capacity is the sum of the
+  individual capacities. Horizontal adjacency does not merge into one column.
+- Water/oil and other liquids settle in the lower tanks; gases fill the top
+  tanks first. Each tank still stores its own liquid and persists it to disk.
+- Different fluids are not mixed; BCCE's native fluid compatibility and
+  balancing determine whether parts of a stack can join.
+- Vanilla BuildCraft bucket interactions, GUI, comparator output, fluid-pipe
+  compatibility and native capability bridge are all inherited unchanged.
+- In-place upgrade items preserve the fluid and block state of the replaced
+  tank, without adding additional transfer mechanics.
+- Obsidian has higher blast resistance, not a different fluid engine.
+- Void and Creative are **special tiers** and do not share their contents with
+  regular stacks. They remain independent from the original fluid storage
+  behavior; in particular the Void tank cannot consume adjacent tank fluid.
+
+All seven targets have source-contract regression tests in
+`scripts/tests/test_tank_parity.py`. These tests do not replace in-game
+GameTests or real server/client smoke tests.
+
+## Automatically bundled localizations
+
+UI translations, localized Guide Book page text, and the Guide Book language
+index are imported **at build time** from
+[`BCCE-team/Localizations`](https://github.com/BCCE-team/Localizations), using
+only the `irontanks/` subtree. Translations are embedded in every resulting JAR:
+no separate language addon is required. This is the same external-localization
+strategy used by BCCE itself.
+
+The canonical English (`en_us`) UI and Guide Book resources remain in
+`source-shared`, even if the localization repository provides an English file.
+The external `irontanks/guide/languages.json` replaces the English-only index
+when packaging, so the Guide Book discovers all translated languages. The
+staging script checks malformed/duplicate JSON keys, mismatched language lists,
+and the exact JAR contents. All generated files and the cloned translation
+cache live in ignored `build/` directories.
+
+Normal online builds automatically find a sibling `Localizations` checkout or
+fetch/update the external repository at the selected revision (`main` by
+default). CI uses an explicit checkout. Offline builds require a cached Git
+checkout or local translations.
+
+Override the source/revision in Gradle when needed:
+
+```bash
+cd builds/legacy
+./gradlew buildAndCollect -PirontanksLocalizationsDir=../../Localizations
+# or: -PirontanksLocalizationsRef=<commit-or-branch>
+```
+
+An absolute directory is also supported through the environment variable
+`IRONTANKS_LOCALIZATIONS_DIR`. Release builds pin the Git commit SHA of the
+translation repository once and reuse it for every target.
+
+## Seamless vertical tank columns
+
+Normal Iron Tanks tiers keep BCCE's native block occlusion and the same
+`cullface: up`/`cullface: down` end-cap geometry. Stacking ordinary tanks,
+including mixed Iron Tanks and BuildCraft tanks, hides the internal top and
+bottom faces while leaving the outer end caps and glass-like side textures
+visible. The existing `joined_below` texture variants remove the visible side
+seam. Void and Creative tanks do not join normal fluid columns; their end
+caps retain non-occluding rendering.
+
+## Automated releases
+
+The separate `.github/workflows/publish.yml` is modeled on BCCE's release
+pipeline. **Publishing a GitHub Release** with a tag matching
+`common.mod.version` (currently `3.0.4-bcce`) triggers:
+
+1. Source, version, Gradle wrapper, project and token validation.
+2. Pinned localization checkout and parallel builds of `legacy`,
+   `modern` and `26.X` generations.
+3. Verification that all seven production JARs contain the exact external
+   translations, Guide Book language index and original English resources.
+4. **Sequential** publishing of 1.19.2 Forge, 1.20.1 Forge, 1.21.1 NeoForge,
+   1.21.11 NeoForge, 26.1.2 NeoForge, 26.2 NeoForge and 26.3 NeoForge to
+   Modrinth, CurseForge and the GitHub Release, with a
+   60-second gap between Minecraft versions.
+
+Regular commits/PRs only run `.github/workflows/ci.yml`: they **never publish**.
+A failed build/verification blocks publication. Release targets are declared
+explicitly and checked against the Stonecutter target matrices.
+
+Before publishing, set these **GitHub Actions repository secrets** under
+`Settings → Secrets and variables → Actions`:
+
+- `MODRINTH_TOKEN` — a token with publishing permission for IronTanks.
+- `CURSEFORGE_TOKEN` — a token with publishing permission for IronTanks.
+
+The known CurseForge project ID is `1640876`. Modrinth is configured with the
+project slug `irontanks-community-edition` from the BCCE download link; the
+pipeline checks the project via Modrinth's API before uploading anything.
+If its current slug/ID differs, set repository variable `MODRINTH_PROJECT_ID`
+to the actual project ID. Required dependency links point to BCCE on both
+platforms (`z3Aj5eOl` / `1592400`). `GITHUB_TOKEN` is supplied by GitHub
+Actions and requires no extra repository secret.
+
+Do **not** reuse an already published version tag. Update
+`common.mod.version`, create the matching tag, and publish its GitHub Release.
 
 ## Verification
 
@@ -59,7 +176,12 @@ Each target pins the matching BCCE artifact (`8.0.21+<minecraft>+<loader>`) so F
 python scripts/validate-stonecutter.py
 python scripts/validate-source-families.py
 python scripts/verify_port.py
+python -m unittest discover -s scripts/tests -p test_localization_packaging.py -v
+python -m unittest discover -s scripts/tests -p test_tank_parity.py -v
 ```
+
+Production CI also builds every target and verifies localization bytes inside
+each JAR against the checked-out translation repository.
 
 ## License
 

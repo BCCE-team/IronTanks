@@ -167,7 +167,7 @@ def validate_target(target: str, props: dict[str, str]) -> None:
     ):
         if required not in java_text:
             fail(f'{target}: missing required port behavior {required!r}')
-    if target == '1.21.11-neoforge':
+    if target in ('1.21.11-neoforge', '26.1.2-neoforge', '26.2-neoforge', '26.3-neoforge'):
         if 'Capabilities.Fluid.BLOCK' not in java_text or 'TransferInterop.exportFluids' not in java_text:
             fail(f'{target}: NeoForge resource fluid capability bridge is missing')
         if 'EventBusSubscriber.Bus.MOD' in java_text or 'bus = EventBusSubscriber.Bus.MOD' in java_text:
@@ -208,8 +208,8 @@ def validate_target(target: str, props: dict[str, str]) -> None:
 
     pack = read_json(resources / 'pack.mcmeta').get('pack', {})
     expected_pack = (
-        int(prop(props, target, 'pack.format')),
-        int(prop(props, target, 'pack.resource_format')),
+        float(prop(props, target, 'pack.format')),
+        float(prop(props, target, 'pack.resource_format')),
         float(prop(props, target, 'pack.data_format')),
     )
     actual_pack = (
@@ -220,7 +220,7 @@ def validate_target(target: str, props: dict[str, str]) -> None:
 
     validate_recipe_tags(target, resources)
 
-    if target == '1.21.11-neoforge':
+    if target in ('1.21.11-neoforge', '26.1.2-neoforge', '26.2-neoforge', '26.3-neoforge'):
         legacy_models = {path.stem for path in (resources / 'assets/irontanks/models/item').glob('*.json')}
         client_items = {path.stem for path in (resources / 'assets/irontanks/items').glob('*.json')}
         if client_items != legacy_models:
@@ -268,7 +268,7 @@ def validate_target(target: str, props: dict[str, str]) -> None:
 
 
 def validate_build_files() -> None:
-    for relative in ('builds/legacy/build.forge.gradle', 'builds/modern/build.neoforge.gradle'):
+    for relative in ('builds/legacy/build.forge.gradle', 'build-logic/neoforge-target.gradle'):
         text = (ROOT / relative).read_text(encoding='utf-8')
         for token in (
             "providers.gradleProperty('pythonExecutable')", 'sourceLayoutScript', 'prepareEffectiveSource',
@@ -283,11 +283,15 @@ def validate_build_files() -> None:
     forge = (ROOT / 'builds/legacy/build.forge.gradle').read_text(encoding='utf-8')
     if 'implementation fg.deobf(buildCraftCoordinate)' not in forge:
         fail('Forge BCCE Maven dependency is not deobfuscated')
-    neo = (ROOT / 'builds/modern/build.neoforge.gradle').read_text(encoding='utf-8')
+    neo = (ROOT / 'build-logic/neoforge-target.gradle').read_text(encoding='utf-8')
     if 'implementation buildCraftCoordinate' not in neo:
         fail('NeoForge BCCE Maven dependency is not configured as implementation')
     if "createMinecraftArtifacts" not in neo or 'dependsOn prepareEffectiveSource' not in neo:
         fail('NeoForge Minecraft artifact creation is not ordered after source materialization')
+    for root in ('builds/modern', 'builds/26.X'):
+        script = (ROOT / root / 'build.neoforge.gradle').read_text(encoding='utf-8')
+        if "build-logic/neoforge-target.gradle" not in script:
+            fail(f'{root}: shared NeoForge build implementation not applied')
 
 
 def main() -> None:
@@ -302,9 +306,11 @@ def main() -> None:
     if prop(props, '1.19.2-forge', 'deps.buildcraft.modrinth_project') != 'z3Aj5eOl':
         fail('BCCE Modrinth Maven project ID must remain pinned to z3Aj5eOl')
     for target in target_ids(props):
-        expected = f"8.0.21+{target.replace('-', '+')}"
+        expected = f"8.0.26+{target.replace('-', '+')}"
         if prop(props, target, 'buildcraft.version') != expected:
             fail(f'{target}: BCCE Maven version must be pinned to {expected}')
+        if prop(props, target, 'buildcraft.version_range') != '[8.0.24,)':
+            fail(f'{target}: minimum supported BCCE version must be 8.0.24')
 
     validate_common_resources()
     validate_build_files()

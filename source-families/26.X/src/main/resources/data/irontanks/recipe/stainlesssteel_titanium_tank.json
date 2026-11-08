@@ -1,0 +1,19 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "pattern": [
+    " g ",
+    "gtg",
+    "mgm"
+  ],
+  "key": {
+    "m": "#c:ingots/titanium",
+    "g": [
+      "#c:glass_blocks/colorless",
+      "#c:glass_blocks"
+    ],
+    "t": "irontanks:stainlesssteel_tank"
+  },
+  "result": {
+    "id": "irontanks:titanium_tank"
+  }
+}

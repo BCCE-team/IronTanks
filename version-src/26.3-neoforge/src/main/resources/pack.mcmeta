@@ -1,0 +1,10 @@
+{
+  "pack": {
+    "description": "Iron Tanks Community Edition 26.3 NeoForge",
+    "pack_format": 97.1,
+    "min_format": 97.1,
+    "max_format": 97.1,
+    "forge:resource_pack_format": 97.1,
+    "forge:data_pack_format": 121.0
+  }
+}

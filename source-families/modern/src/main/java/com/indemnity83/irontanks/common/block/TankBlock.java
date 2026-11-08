@@ -4,7 +4,7 @@ package com.indemnity83.irontanks.common.block;
 import buildcraft.factory.block.BlockTank;
 import buildcraft.lib.tile.TileBC_Neptune;
 import com.indemnity83.irontanks.common.blockentity.TankTile;
-import net.minecraft.ChatFormatting;
+import net.minecraft.network.chat.Style;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.item.Item;
@@ -29,7 +29,10 @@ public class TankBlock extends BlockTank {
     }
 
     protected TankBlock(int capacityBuckets, float hardness, float resistance, BlockBehaviour.Properties properties) {
-        super(properties.strength(hardness, resistance).requiresCorrectToolForDrops().noOcclusion());
+        // Match BCCE BlockTank: the model's top/bottom cullfaces must see an
+        // occluding neighbour so both internal end caps disappear in a tank stack.
+        // In particular, do not call noOcclusion() on ordinary tanks here.
+        super(properties.strength(hardness, resistance).requiresCorrectToolForDrops());
         this.capacityBuckets = capacityBuckets;
     }
 
@@ -56,7 +59,7 @@ public class TankBlock extends BlockTank {
     //? }
 
     public final void appendTankTooltip(Consumer<Component> tooltip) {
-        tooltip.accept(Component.translatable("irontanks.tooltip.capacity", capacityBuckets).withStyle(ChatFormatting.GRAY));
+        tooltip.accept(Component.translatable("irontanks.tooltip.capacity", capacityBuckets).withStyle(Style.EMPTY.withColor(0xAAAAAA)));
         appendExtraTooltip(tooltip);
     }
 

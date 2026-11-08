@@ -2,6 +2,8 @@ name: Iron Tanks CI
 
 on:
   push:
+    branches:
+      - '**'
   pull_request:
   workflow_dispatch:
 
@@ -17,15 +19,17 @@ jobs:
     name: Validate source architecture and port invariants
     runs-on: ubuntu-latest
     timeout-minutes: 15
-
     steps:
-      - name: Checkout
+      - name: Checkout Iron Tanks
         uses: actions/checkout@v4
 
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
+
+      - name: Validate Gradle wrappers
+        uses: gradle/actions/wrapper-validation@v4
 
       - name: Validate independent Stonecutter builds
         run: python scripts/validate-stonecutter.py
@@ -36,6 +40,12 @@ jobs:
       - name: Verify Iron Tanks port invariants
         run: python scripts/verify_port.py
 
+      - name: Test external localization staging and packaging
+        run: python -m unittest discover -s scripts/tests -p test_localization_packaging.py -v
+
+      - name: Test original Iron Tanks normal-tank contract across targets
+        run: python -m unittest discover -s scripts/tests -p test_tank_parity.py -v
+
   build:
     name: Build ${{ matrix.generation }} targets
     needs: validate
@@ -44,24 +54,33 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        generation:
-          - legacy
-          - modern
+        include:
+          - generation: legacy
+            java: '17'
+          - generation: modern
+            java: '21'
+          - generation: 26.X
+            java: '25'
     env:
       BUILD_GENERATION: ${{ matrix.generation }}
       GRADLE_OPTS: -Dorg.gradle.daemon=false -Dfile.encoding=UTF-8
-
     steps:
       - name: Checkout Iron Tanks
         uses: actions/checkout@v4
+
+      - name: Checkout external Iron Tanks localizations
+        uses: actions/checkout@v4
+        with:
+          repository: BCCE-team/Localizations
+          ref: main
+          path: build/external/localizations
+          persist-credentials: false
 
       - name: Set up Java toolchains
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: |
-            17
-            21
+          java-version: ${{ matrix.java }}
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -72,7 +91,7 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
 
       - name: Make wrappers executable
-        run: chmod +x builds/legacy/gradlew builds/modern/gradlew build-all.sh scripts/source_layout.py
+        run: chmod +x builds/legacy/gradlew builds/modern/gradlew builds/26.X/gradlew build-all.sh scripts/source_layout.py scripts/embed_localizations.py
 
       - name: Build Iron Tanks generation
         shell: bash
@@ -80,6 +99,23 @@ jobs:
           set -euo pipefail
           cd "builds/${BUILD_GENERATION}"
           ./gradlew --no-daemon --console=plain --stacktrace buildAndCollect
+
+      - name: Verify external translations inside every production JAR
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="$(sed -n 's/^common\.mod\.version=//p' build-config/common.properties)"
+          mapfile -t targets < <(python scripts/validate-stonecutter.py --list-targets --generation "$BUILD_GENERATION")
+          for target in "${targets[@]}"; do
+            minecraft="${target%-*}"
+            loader="${target##*-}"
+            jar="build/libs/${BUILD_GENERATION}/${version}/IronTanks-Community-Edition-${version}+${minecraft}+${loader}.jar"
+            python scripts/embed_localizations.py verify-jar \
+              --source build/external/localizations \
+              --english source-shared/src/main/resources/assets/irontanks/lang/en_us.json \
+              --english-guide source-shared/src/main/resources/assets/irontanks/guide/text/en_us.json \
+              --jar "$jar"
+          done
 
       - name: Upload production jars and diagnostics
         if: always()

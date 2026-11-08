@@ -8,7 +8,6 @@ import net.minecraft.core.Direction;
 import net.minecraft.world.level.block.state.BlockState;
 
 import net.neoforged.neoforge.fluids.FluidStack;
-import net.neoforged.neoforge.fluids.capability.IFluidHandler.FluidAction;
 
 public final class CreativeTankTile extends TankTile {
     public CreativeTankTile(BlockPos pos, BlockState state) {

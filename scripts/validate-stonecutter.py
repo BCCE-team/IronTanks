@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate the independent legacy/modern Stonecutter build roots."""
+"""Validate legacy, modern, and 26.X independent Stonecutter build roots."""
 from __future__ import annotations
 
 import argparse
@@ -76,13 +76,18 @@ def validate_generation(name: str, targets: list[str], props: dict[str, str]) ->
         if not script.is_file():
             fail(f"{target}: missing {script.relative_to(ROOT)}")
         text = script.read_text(encoding="utf-8")
+        impl = (ROOT / 'build-logic/neoforge-target.gradle').read_text(encoding='utf-8') if loader == 'neoforge' else text
         for token in ("sourceLayoutScript", "prepareEffectiveSource", "effectiveSourceRoot", "buildAndCollect"):
-            if token not in text:
-                fail(f"{script.relative_to(ROOT)}: missing {token}")
+            if token not in impl:
+                fail(f"{script.relative_to(ROOT)}: missing build behavior {token}")
+        if loader == 'neoforge' and "apply from: new File(rootProject.file('../..').canonicalFile, 'build-logic/neoforge-target.gradle')" not in text:
+            fail(f"{script.relative_to(ROOT)}: must apply the shared NeoForge build logic")
         if loader == "forge" and "id 'net.minecraftforge.gradle' version '6.0.54'" not in text:
             fail(f"{script.relative_to(ROOT)}: ForgeGradle 6.0.54 is not pinned")
-        if loader == "neoforge" and "id 'net.neoforged.moddev' version '2.0.143'" not in text:
-            fail(f"{script.relative_to(ROOT)}: ModDevGradle 2.0.143 is not pinned")
+        if loader == 'neoforge':
+            mdg = '2.0.148' if name == '26.X' else '2.0.143'
+            if f"id 'net.neoforged.moddev' version '{mdg}'" not in text:
+                fail(f'{script.relative_to(ROOT)}: ModDevGradle {mdg} is not pinned')
 
         for key in (
             "deps.minecraft", "java.version", "source.root", "source.platform_root", "source.overlay_root",
@@ -91,8 +96,14 @@ def validate_generation(name: str, targets: list[str], props: dict[str, str]) ->
         ):
             prop(props, target, key)
         prop(props, target, "deps.forge" if loader == "forge" else "deps.neoforge")
+        if name == '26.X' and prop(props, target, 'java.version') != '25':
+            fail(f'{target}: Minecraft 26.X must use Java 25')
 
-    return wrapper_version(root)
+    gradle = wrapper_version(root)
+    expected_gradle = '9.1.0' if name == '26.X' else '8.8'
+    if gradle != expected_gradle:
+        fail(f'{name}: expected Gradle {expected_gradle}, got {gradle}')
+    return gradle
 
 
 def main() -> None:
@@ -130,7 +141,10 @@ def main() -> None:
         if not (ROOT / name).is_file():
             fail(f"missing build orchestrator {name}")
 
-    required_targets = {"1.19.2-forge", "1.20.1-forge", "1.21.1-neoforge", "1.21.11-neoforge"}
+    required_targets = {
+        '1.19.2-forge', '1.20.1-forge', '1.21.1-neoforge', '1.21.11-neoforge',
+        '26.1.2-neoforge', '26.2-neoforge', '26.3-neoforge',
+    }
     if set(targets) != required_targets:
         fail(f"production target matrix mismatch: {targets}")
 

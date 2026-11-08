@@ -78,6 +78,49 @@ def prepareEffectiveSource = tasks.register('prepareEffectiveSource', Exec) {
             '--output', effectiveSourceRoot.get().asFile.absolutePath
 }
 
+// Iron Tanks translations are maintained outside this repository. Stage them
+// per target, then put the generated resources FIRST so the external Guide Book
+// language index replaces the English-only index from the source layers.
+def localizationScript = new File(repositoryRoot, 'scripts/embed_localizations.py')
+def localizationEnglish = new File(repositoryRoot, 'source-shared/src/main/resources/assets/irontanks/lang/en_us.json')
+def localizationEnglishGuide = new File(repositoryRoot, 'source-shared/src/main/resources/assets/irontanks/guide/text/en_us.json')
+def localizationOutput = layout.buildDirectory.dir("generated-resources/irontanks-localizations")
+def localizationCache = layout.buildDirectory.dir("external-localizations/checkout")
+def localizationPath = providers.gradleProperty('irontanksLocalizationsDir')
+        .orElse(providers.environmentVariable('IRONTANKS_LOCALIZATIONS_DIR')).getOrNull()
+def localizationRef = providers.gradleProperty('irontanksLocalizationsRef')
+        .orElse(providers.environmentVariable('IRONTANKS_LOCALIZATIONS_REF')).getOrElse('main')
+def localizationRemote = providers.gradleProperty('irontanksLocalizationsRemote')
+        .getOrElse('https://github.com/BCCE-team/Localizations.git')
+
+def stageIronTanksLocalizations = tasks.register('stageIronTanksLocalizations', Exec) {
+    group = 'build setup'
+    description = "Fetch and stage Iron Tanks languages and Guide Book translations for ${targetName}"
+    workingDir repositoryRoot
+    environment 'PYTHONDONTWRITEBYTECODE', '1'
+    inputs.files(localizationScript, localizationEnglish, localizationEnglishGuide)
+    inputs.property('localizationPath', localizationPath ?: '(auto)')
+    inputs.property('localizationRef', localizationRef)
+    inputs.property('localizationRemote', localizationRemote)
+    outputs.dir(localizationOutput)
+    // main moves; never reuse the previous staged translations without checking.
+    outputs.upToDateWhen { false }
+    def args = [pythonExecutable, localizationScript.absolutePath, 'stage',
+            '--root', repositoryRoot.absolutePath,
+            '--english', localizationEnglish.absolutePath,
+            '--english-guide', localizationEnglishGuide.absolutePath,
+            '--cache', localizationCache.get().asFile.absolutePath,
+            '--output', localizationOutput.get().asFile.absolutePath,
+            '--ref', localizationRef, '--remote', localizationRemote]
+    if (localizationPath?.trim()) {
+        args.addAll(['--source', localizationPath])
+    }
+    if (gradle.startParameter.offline) {
+        args.add('--offline')
+    }
+    commandLine args
+}
+
 def effectiveSourceDir = effectiveSourceRoot.get().asFile
 
 version = "${modVersion}+${targetName.replace('-', '+')}"
@@ -91,7 +134,7 @@ java.toolchain.languageVersion = JavaLanguageVersion.of(javaVersion)
 sourceSets {
     main {
         java.setSrcDirs([new File(effectiveSourceDir, 'src/main/java')])
-        resources.setSrcDirs([new File(effectiveSourceDir, 'src/main/resources')])
+        resources.setSrcDirs([localizationOutput.get().asFile, new File(effectiveSourceDir, 'src/main/resources')])
     }
     test {
         java.setSrcDirs([new File(effectiveSourceDir, 'src/test/java')])
@@ -155,6 +198,8 @@ def resourceProperties = [
 ]
 
 tasks.named('processResources', ProcessResources) {
+    dependsOn stageIronTanksLocalizations
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
     inputs.properties resourceProperties
     filesMatching(['META-INF/mods.toml']) {
         expand(resourceProperties)

@@ -1,0 +1,22 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "pattern": [
+    " g ",
+    "gtg",
+    "mgm"
+  ],
+  "key": {
+    "m": [
+      "#c:ingots/stainless_steel",
+      "#c:ingots/stainlesssteel"
+    ],
+    "g": [
+      "#c:glass_blocks/colorless",
+      "#c:glass_blocks"
+    ],
+    "t": "irontanks:emerald_tank"
+  },
+  "result": {
+    "id": "irontanks:stainlesssteel_tank"
+  }
+}

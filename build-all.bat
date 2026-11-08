@@ -16,4 +16,11 @@ pushd "%REPOSITORY_ROOT%builds\modern"
 call gradlew.bat %GRADLE_ARGS%
 set "STATUS=%ERRORLEVEL%"
 popd
+if not "%STATUS%"=="0" exit /b %STATUS%
+
+echo ==^> Running 26.X Iron Tanks build: %GRADLE_ARGS%
+pushd "%REPOSITORY_ROOT%builds\26.X"
+call gradlew.bat %GRADLE_ARGS%
+set "STATUS=%ERRORLEVEL%"
+popd
 exit /b %STATUS%

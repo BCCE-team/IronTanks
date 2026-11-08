@@ -9,7 +9,7 @@ if (-not $GradleArgs -or $GradleArgs.Count -eq 0) {
     $GradleArgs = @("buildAndCollect")
 }
 
-foreach ($Generation in @("legacy", "modern")) {
+foreach ($Generation in @("legacy", "modern", "26.X")) {
     $BuildRoot = Join-Path $RepositoryRoot "builds/$Generation"
     Write-Host "==> Running $Generation Iron Tanks build: $($GradleArgs -join ' ')"
     Push-Location $BuildRoot

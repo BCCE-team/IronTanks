@@ -1,0 +1,271 @@
+// Shared NeoForge build implementation; applied by modern and 26.X roots.
+
+def targetName = project.name
+def buildGeneration = rootProject.file('targets.properties').withInputStream { stream ->
+    def p = new Properties()
+    p.load(stream)
+    p.getProperty('generation')
+}
+def repositoryRoot = rootProject.file('../..').canonicalFile
+
+def commonConfigFile = new File(repositoryRoot, 'build-config/common.properties')
+def targetConfigFile = rootProject.file('targets.properties')
+if (!commonConfigFile.isFile() || !targetConfigFile.isFile()) {
+    throw new GradleException("Missing Iron Tanks configuration for ${buildGeneration} build")
+}
+
+def targetConfiguration = new Properties()
+commonConfigFile.withInputStream { targetConfiguration.load(it) }
+targetConfigFile.withInputStream { targetConfiguration.load(it) }
+
+def configuredProperty = { String key ->
+    if (project.hasProperty(key)) {
+        return project.property(key).toString().trim()
+    }
+    def targetValue = targetConfiguration.getProperty("target.${targetName}.${key}")
+    if (targetValue != null) {
+        return targetValue.trim()
+    }
+    def commonValue = targetConfiguration.getProperty("common.${key}")
+    commonValue != null ? commonValue.trim() : null
+}
+
+def requiredProperty = { String key ->
+    def value = configuredProperty(key)
+    if (value == null || value.isEmpty()) {
+        throw new GradleException("Missing target property '${key}' for '${targetName}'")
+    }
+    value
+}
+
+def minecraftVersion = requiredProperty('deps.minecraft')
+def neoForgeVersion = requiredProperty('deps.neoforge')
+def modVersion = requiredProperty('mod.version')
+def archiveName = requiredProperty('mod.archive_name')
+def javaVersion = Integer.parseInt(requiredProperty('java.version'))
+def sharedSourceRoot = new File(repositoryRoot, requiredProperty('source.shared_root'))
+def familySourceRoot = new File(repositoryRoot, requiredProperty('source.root'))
+def platformSourceRoot = new File(repositoryRoot, requiredProperty('source.platform_root'))
+def targetOverlayRoot = new File(repositoryRoot, requiredProperty('source.overlay_root'))
+def sourceLayers = [sharedSourceRoot, familySourceRoot, platformSourceRoot, targetOverlayRoot]
+
+sourceLayers.each { layer ->
+    if (!layer.isDirectory()) {
+        throw new GradleException("Configured source layer '${layer}' for '${targetName}' does not exist")
+    }
+}
+
+def effectiveSourceRoot = layout.buildDirectory.dir("effective-source/${targetName}")
+def sourceLayoutScript = new File(repositoryRoot, 'scripts/source_layout.py')
+def defaultPythonExecutable = System.getProperty('os.name').toLowerCase(Locale.ROOT).contains('windows') ? 'python' : 'python3'
+def pythonExecutable = providers.gradleProperty('pythonExecutable')
+        .orElse(providers.environmentVariable('PYTHON'))
+        .getOrElse(defaultPythonExecutable)
+def prepareEffectiveSource = tasks.register('prepareEffectiveSource', Exec) {
+    group = 'build setup'
+    description = "Materialize Iron Tanks source layers for ${targetName}"
+    workingDir repositoryRoot
+    environment 'PYTHONDONTWRITEBYTECODE', '1'
+    inputs.files(sourceLayers)
+    inputs.files(commonConfigFile, targetConfigFile, sourceLayoutScript)
+    outputs.dir(effectiveSourceRoot)
+    commandLine pythonExecutable, sourceLayoutScript.absolutePath, targetName,
+            '--config', targetConfigFile.absolutePath,
+            '--output', effectiveSourceRoot.get().asFile.absolutePath
+}
+
+// Iron Tanks translations are maintained outside this repository. Stage them
+// per target, then put the generated resources FIRST so the external Guide Book
+// language index replaces the English-only index from the source layers.
+def localizationScript = new File(repositoryRoot, 'scripts/embed_localizations.py')
+def localizationEnglish = new File(repositoryRoot, 'source-shared/src/main/resources/assets/irontanks/lang/en_us.json')
+def localizationEnglishGuide = new File(repositoryRoot, 'source-shared/src/main/resources/assets/irontanks/guide/text/en_us.json')
+def localizationOutput = layout.buildDirectory.dir("generated-resources/irontanks-localizations")
+def localizationCache = layout.buildDirectory.dir("external-localizations/checkout")
+def localizationPath = providers.gradleProperty('irontanksLocalizationsDir')
+        .orElse(providers.environmentVariable('IRONTANKS_LOCALIZATIONS_DIR')).getOrNull()
+def localizationRef = providers.gradleProperty('irontanksLocalizationsRef')
+        .orElse(providers.environmentVariable('IRONTANKS_LOCALIZATIONS_REF')).getOrElse('main')
+def localizationRemote = providers.gradleProperty('irontanksLocalizationsRemote')
+        .getOrElse('https://github.com/BCCE-team/Localizations.git')
+
+def stageIronTanksLocalizations = tasks.register('stageIronTanksLocalizations', Exec) {
+    group = 'build setup'
+    description = "Fetch and stage Iron Tanks languages and Guide Book translations for ${targetName}"
+    workingDir repositoryRoot
+    environment 'PYTHONDONTWRITEBYTECODE', '1'
+    inputs.files(localizationScript, localizationEnglish, localizationEnglishGuide)
+    inputs.property('localizationPath', localizationPath ?: '(auto)')
+    inputs.property('localizationRef', localizationRef)
+    inputs.property('localizationRemote', localizationRemote)
+    outputs.dir(localizationOutput)
+    // main moves; never reuse the previous staged translations without checking.
+    outputs.upToDateWhen { false }
+    def args = [pythonExecutable, localizationScript.absolutePath, 'stage',
+            '--root', repositoryRoot.absolutePath,
+            '--english', localizationEnglish.absolutePath,
+            '--english-guide', localizationEnglishGuide.absolutePath,
+            '--cache', localizationCache.get().asFile.absolutePath,
+            '--output', localizationOutput.get().asFile.absolutePath,
+            '--ref', localizationRef, '--remote', localizationRemote]
+    if (localizationPath?.trim()) {
+        args.addAll(['--source', localizationPath])
+    }
+    if (gradle.startParameter.offline) {
+        args.add('--offline')
+    }
+    commandLine args
+}
+
+def effectiveSourceDir = effectiveSourceRoot.get().asFile
+
+version = "${modVersion}+${targetName.replace('-', '+')}"
+group = requiredProperty('mod.group')
+base {
+    archivesName = archiveName
+}
+
+java.toolchain.languageVersion = JavaLanguageVersion.of(javaVersion)
+
+sourceSets {
+    main {
+        java.setSrcDirs([new File(effectiveSourceDir, 'src/main/java')])
+        resources.setSrcDirs([localizationOutput.get().asFile, new File(effectiveSourceDir, 'src/main/resources')])
+    }
+    test {
+        java.setSrcDirs([new File(effectiveSourceDir, 'src/test/java')])
+        resources.setSrcDirs([new File(effectiveSourceDir, 'src/test/resources')])
+    }
+}
+
+repositories {
+    mavenCentral()
+    exclusiveContent {
+        forRepository {
+            maven {
+                name = 'Modrinth'
+                url = 'https://api.modrinth.com/maven'
+            }
+        }
+        filter { includeGroup 'maven.modrinth' }
+    }
+}
+
+neoForge {
+    version = neoForgeVersion
+
+    runs {
+        client {
+            client()
+            gameDirectory = new File(repositoryRoot, "run/${buildGeneration}/${targetName}")
+        }
+        server {
+            server()
+            gameDirectory = new File(repositoryRoot, "run/${buildGeneration}/${targetName}")
+            programArgument '--nogui'
+        }
+        configureEach {
+            systemProperty 'forge.logging.markers', ''
+            logLevel = org.slf4j.event.Level.INFO
+        }
+    }
+
+    mods {
+        irontanks {
+            sourceSet(sourceSets.main)
+        }
+    }
+}
+
+def buildCraftCoordinate = "maven.modrinth:${requiredProperty('deps.buildcraft.modrinth_project')}:${requiredProperty('buildcraft.version')}"
+
+dependencies {
+    implementation buildCraftCoordinate
+}
+
+logger.lifecycle("Iron Tanks ${targetName}: using ${buildCraftCoordinate}")
+
+def resourceProperties = [
+        mod_id                  : requiredProperty('mod.id'),
+        mod_name                : requiredProperty('mod.name'),
+        mod_version             : project.version.toString(),
+        mod_license             : requiredProperty('mod.license'),
+        mod_authors             : requiredProperty('mod.authors'),
+        mod_description         : requiredProperty('mod.description'),
+        loader_version_range    : requiredProperty('loader.version_range'),
+        minecraft_version_range : requiredProperty('minecraft.version_range'),
+        neo_version_range       : requiredProperty('neoforge.version_range'),
+        buildcraft_version_range: requiredProperty('buildcraft.version_range')
+]
+
+tasks.named('processResources', ProcessResources) {
+    dependsOn stageIronTanksLocalizations
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+    inputs.properties resourceProperties
+    filesMatching(['META-INF/neoforge.mods.toml']) {
+        expand(resourceProperties)
+    }
+}
+
+tasks.matching { it.name == 'createMinecraftArtifacts' }.configureEach {
+    dependsOn prepareEffectiveSource
+}
+
+tasks.named('jar', Jar) {
+    archiveClassifier = ''
+    from(new File(repositoryRoot, 'LICENSE.txt')) {
+        rename { 'LICENSE_IronTanks.txt' }
+    }
+    from(new File(repositoryRoot, 'NOTICE.md')) {
+        rename { 'NOTICE_IronTanks.md' }
+    }
+    manifest {
+        attributes([
+                'Specification-Title'      : requiredProperty('mod.name'),
+                'Specification-Vendor'     : requiredProperty('mod.authors'),
+                'Specification-Version'    : modVersion,
+                'Implementation-Title'     : requiredProperty('mod.name'),
+                'Implementation-Version'   : project.version,
+                'Implementation-Vendor'    : requiredProperty('mod.authors'),
+                'Implementation-Timestamp' : new Date().format("yyyy-MM-dd'T'HH:mm:ssZ")
+        ])
+    }
+}
+
+def releaseOutputDir = new File(repositoryRoot, "build/libs/${buildGeneration}/${modVersion}")
+tasks.register('buildAndCollect', Copy) {
+    group = 'build'
+    description = "Build and collect the ${targetName} production jar"
+    dependsOn tasks.named('build')
+    from tasks.named('jar', Jar).flatMap { it.archiveFile }
+    into releaseOutputDir
+}
+
+publishing {
+    publications {
+        register('mavenJava', MavenPublication) {
+            artifact jar
+        }
+    }
+    repositories {
+        maven { url = new File(repositoryRoot, "mcmodsrepo/${buildGeneration}").toURI() }
+    }
+}
+
+tasks.withType(ProcessResources).configureEach {
+    dependsOn prepareEffectiveSource
+}
+tasks.withType(JavaCompile).configureEach {
+    dependsOn prepareEffectiveSource
+    options.encoding = 'UTF-8'
+    options.release = javaVersion
+}
+
+idea.module {
+    downloadJavadoc = true
+    downloadSources = true
+}
+eclipse.classpath {
+    downloadJavadoc = true
+    downloadSources = true
+}

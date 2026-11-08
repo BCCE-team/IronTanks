@@ -1,11 +1,13 @@
 
 package com.indemnity83.irontanks.common.blockentity;
 
+import buildcraft.factory.tile.TileTank;
+
 import com.indemnity83.irontanks.common.registry.IronTanksBlockEntities;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
 import net.minecraft.world.level.block.state.BlockState;
 
-import net.neoforged.neoforge.fluids.capability.IFluidHandler.FluidAction;
 
 public final class VoidTankTile extends TankTile {
     /** Matches the default BuildCraft CE void fluid pipe rate: base fluid rate 10 * 8. */
@@ -17,6 +19,13 @@ public final class VoidTankTile extends TankTile {
 
     public VoidTankTile(BlockPos pos, BlockState state, int capacityMb) {
         super(IronTanksBlockEntities.VOID_TANK.get(), pos, state, capacityMb);
+    }
+
+    // Original Iron Tanks void tanks do not share storage with normal tanks.
+    // A joined void column would silently delete fluid from neighbouring tiers.
+    @Override
+    public boolean canConnectTo(TileTank other, Direction direction) {
+        return false;
     }
 
     @Override

@@ -12,9 +12,9 @@ Small Minecraft-version differences may stay in family/platform files through
 Stonecutter-style ``//? if ...`` directives. Loader differences must stay in
 platform layers; large generation differences belong in source families.
 
-The legacy and modern Gradle builds are intentionally independent. Their target
-matrices are indexed by build-config/generations.properties and may use different
-Gradle/Stonecutter/JDK toolchains while sharing this source repository.
+The legacy, modern and 26.X Gradle builds are intentionally independent. Their
+target matrices are indexed by build-config/generations.properties and may use
+different Gradle/Stonecutter/JDK toolchains while sharing the source repository.
 """
 from __future__ import annotations
 

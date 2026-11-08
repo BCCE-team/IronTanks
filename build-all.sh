@@ -8,7 +8,7 @@ else
   gradle_args=("$@")
 fi
 
-for generation in legacy modern; do
+for generation in legacy modern 26.X; do
   echo "==> Running ${generation} Iron Tanks build: ${gradle_args[*]}"
   (
     cd "${repo_root}/builds/${generation}"

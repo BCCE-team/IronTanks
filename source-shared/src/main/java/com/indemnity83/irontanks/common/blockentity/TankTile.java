@@ -8,6 +8,13 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.world.level.block.entity.BlockEntityType;
 import net.minecraft.world.level.block.state.BlockState;
 
+/**
+ * A normal Iron Tanks tier is exactly a BuildCraft tank with a larger capacity.
+ *
+ * <p>Keep the inherited vanilla BuildCraft column aggregation, fluid matching,
+ * bottom-up liquid/top-down gas balancing, bucket activation, comparator output,
+ * persistence and capability semantics. Do not implement custom movement here.
+ */
 public class TankTile extends TileTank {
     private static final int FALLBACK_CAPACITY = 16_000;
 

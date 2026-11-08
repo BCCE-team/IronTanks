@@ -1,0 +1,413 @@
+name: publish
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: irontanks-publish-${{ github.event.release.tag_name }}
+  cancel-in-progress: false
+
+env:
+  # Override the slug with the actual Modrinth project ID using the repo variable.
+  MODRINTH_PROJECT_ID: ${{ vars.MODRINTH_PROJECT_ID || 'irontanks-community-edition' }}
+  CURSEFORGE_PROJECT_ID: '1640876'
+  MODRINTH_DEPENDENCIES: 'z3Aj5eOl(required)'
+  CURSEFORGE_DEPENDENCIES: '1592400(required)'
+  PUBLISH_DELAY_SECONDS: '60'
+
+jobs:
+  metadata:
+    runs-on: ubuntu-24.04
+    outputs:
+      localizations_sha: ${{ steps.localizations.outputs.sha }}
+    steps:
+      - name: Checkout release sources
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.release.tag_name }}
+          fetch-depth: 0
+
+      - name: Pin the external translation revision for this release
+        id: localizations
+        shell: bash
+        run: |
+          set -euo pipefail
+          sha="$(git ls-remote https://github.com/BCCE-team/Localizations.git refs/heads/main | cut -f1)"
+          if [[ ! "$sha" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::Unable to pin BCCE-team/Localizations main"
+            exit 1
+          fi
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          echo "Using BCCE-team/Localizations @ $sha"
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Validate source and localization integration
+        run: |
+          python scripts/validate-stonecutter.py
+          python scripts/validate-source-families.py
+          python scripts/verify_port.py
+          python -m unittest discover -s scripts/tests -p test_localization_packaging.py -v
+          python -m unittest discover -s scripts/tests -p test_tank_parity.py -v
+
+      - name: Validate Gradle wrappers
+        uses: gradle/actions/wrapper-validation@v4
+
+      - name: Validate release tag and target matrix
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          set -euo pipefail
+          expected="$(sed -n 's/^common\.mod\.version=//p' build-config/common.properties)"
+          if [[ -z "$expected" || "$RELEASE_TAG" != "$expected" ]]; then
+            echo "::error::Release tag '$RELEASE_TAG' must equal common.mod.version '$expected'"
+            exit 1
+          fi
+          legacy="$(sed -n 's/^targets=//p' builds/legacy/targets.properties)"
+          modern="$(sed -n 's/^targets=//p' builds/modern/targets.properties)"
+          nextgen="$(sed -n 's/^targets=//p' builds/26.X/targets.properties)"
+          if [[ "$legacy" != '1.19.2-forge,1.20.1-forge' || "$modern" != '1.21.1-neoforge,1.21.11-neoforge' || "$nextgen" != '26.1.2-neoforge,26.2-neoforge,26.3-neoforge' ]]; then
+            echo '::error::Update publish.yml to match the build target matrix'
+            exit 1
+          fi
+
+      - name: Validate publishing credentials and projects
+        shell: bash
+        env:
+          MODRINTH_TOKEN: ${{ secrets.MODRINTH_TOKEN }}
+          CURSEFORGE_TOKEN: ${{ secrets.CURSEFORGE_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [[ -z "$MODRINTH_TOKEN" || -z "$CURSEFORGE_TOKEN" ]]; then
+            echo '::error::Set repository secrets MODRINTH_TOKEN and CURSEFORGE_TOKEN'
+            exit 1
+          fi
+          if [[ -z "$MODRINTH_PROJECT_ID" || -z "$CURSEFORGE_PROJECT_ID" ]]; then
+            echo '::error::Missing publishing project identifiers'
+            exit 1
+          fi
+          # Fail before any uploads when the chosen project slug/ID is wrong.
+          curl --fail --silent --show-error --location --retry 3 \
+            "https://api.modrinth.com/v2/project/${MODRINTH_PROJECT_ID}" -o /dev/null
+
+  build:
+    needs: metadata
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - generation: legacy
+            java: '17'
+            targets: '1.19.2-forge,1.20.1-forge'
+          - generation: modern
+            java: '21'
+            targets: '1.21.1-neoforge,1.21.11-neoforge'
+          - generation: 26.X
+            java: '25'
+            targets: '26.1.2-neoforge,26.2-neoforge,26.3-neoforge'
+    steps:
+      - name: Checkout tagged Iron Tanks sources
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.release.tag_name }}
+          fetch-depth: 0
+
+      - name: Checkout pinned external Iron Tanks localizations
+        uses: actions/checkout@v4
+        with:
+          repository: BCCE-team/Localizations
+          ref: ${{ needs.metadata.outputs.localizations_sha }}
+          path: build/external/localizations
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ matrix.java }}
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Make wrappers executable
+        run: chmod +x builds/legacy/gradlew builds/modern/gradlew builds/26.X/gradlew scripts/source_layout.py scripts/embed_localizations.py
+
+      - name: Build ${{ matrix.generation }} release artifacts
+        working-directory: builds/${{ matrix.generation }}
+        run: ./gradlew --no-daemon --console=plain --stacktrace buildAndCollect
+
+      - name: Verify JARs and collect release artifacts
+        shell: bash
+        env:
+          TAG: ${{ github.event.release.tag_name }}
+          GENERATION: ${{ matrix.generation }}
+          TARGETS: ${{ matrix.targets }}
+        run: |
+          set -euo pipefail
+          mkdir -p "release/$GENERATION"
+          IFS=',' read -ra targets <<< "$TARGETS"
+          for target in "${targets[@]}"; do
+            minecraft="${target%-*}"
+            loader="${target##*-}"
+            jar="build/libs/${GENERATION}/${TAG}/IronTanks-Community-Edition-${TAG}+${minecraft}+${loader}.jar"
+            if [[ ! -f "$jar" ]]; then
+              echo "::error::Missing release JAR: $jar"
+              find build -maxdepth 6 -name '*.jar' -type f -print || true
+              exit 1
+            fi
+            python scripts/embed_localizations.py verify-jar \
+              --source build/external/localizations \
+              --english source-shared/src/main/resources/assets/irontanks/lang/en_us.json \
+              --english-guide source-shared/src/main/resources/assets/irontanks/guide/text/en_us.json \
+              --jar "$jar"
+            cp "$jar" "release/$GENERATION/"
+          done
+
+      - name: Upload ${{ matrix.generation }} release artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: irontanks-release-${{ matrix.generation }}
+          path: release/${{ matrix.generation }}/*.jar
+          if-no-files-found: error
+
+  publish:
+    name: Publish versions sequentially
+    needs: [metadata, build]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - name: Download legacy artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: irontanks-release-legacy
+          path: release
+
+      - name: Download modern artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: irontanks-release-modern
+          path: release
+
+      - name: Download 26.X artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: irontanks-release-26.X
+          path: release
+      - name: Publish 1.19.2 Forge
+        uses: Kira-NT/mc-publish@v3
+        with:
+          files: release/IronTanks-Community-Edition-${{ github.event.release.tag_name }}+1.19.2+forge.jar
+          name: ${{ github.event.release.tag_name }}+1.19.2+forge
+          version: ${{ github.event.release.tag_name }}+1.19.2+forge
+          version-type: release
+          loaders: forge
+          game-versions: 1.19.2
+          game-version-filter: none
+          environment: client | server
+
+          modrinth-id: ${{ env.MODRINTH_PROJECT_ID }}
+          modrinth-token: ${{ secrets.MODRINTH_TOKEN }}
+          modrinth-changelog: ${{ github.event.release.body }}
+          modrinth-dependencies: ${{ env.MODRINTH_DEPENDENCIES }}
+
+          curseforge-id: ${{ env.CURSEFORGE_PROJECT_ID }}
+          curseforge-token: ${{ secrets.CURSEFORGE_TOKEN }}
+          curseforge-changelog: ${{ github.event.release.body }}
+          curseforge-dependencies: ${{ env.CURSEFORGE_DEPENDENCIES }}
+
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          github-tag: ${{ github.event.release.tag_name }}
+          github-changelog: ''
+
+      - name: Wait 1 minute before 1.20.1
+        run: sleep "$PUBLISH_DELAY_SECONDS"
+
+      - name: Publish 1.20.1 Forge
+        uses: Kira-NT/mc-publish@v3
+        with:
+          files: release/IronTanks-Community-Edition-${{ github.event.release.tag_name }}+1.20.1+forge.jar
+          name: ${{ github.event.release.tag_name }}+1.20.1+forge
+          version: ${{ github.event.release.tag_name }}+1.20.1+forge
+          version-type: release
+          loaders: forge
+          game-versions: 1.20.1
+          game-version-filter: none
+          environment: client | server
+
+          modrinth-id: ${{ env.MODRINTH_PROJECT_ID }}
+          modrinth-token: ${{ secrets.MODRINTH_TOKEN }}
+          modrinth-changelog: ${{ github.event.release.body }}
+          modrinth-dependencies: ${{ env.MODRINTH_DEPENDENCIES }}
+
+          curseforge-id: ${{ env.CURSEFORGE_PROJECT_ID }}
+          curseforge-token: ${{ secrets.CURSEFORGE_TOKEN }}
+          curseforge-changelog: ${{ github.event.release.body }}
+          curseforge-dependencies: ${{ env.CURSEFORGE_DEPENDENCIES }}
+
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          github-tag: ${{ github.event.release.tag_name }}
+          github-changelog: ''
+
+      - name: Wait 1 minute before 1.21.1
+        run: sleep "$PUBLISH_DELAY_SECONDS"
+
+      - name: Publish 1.21.1 NeoForge
+        uses: Kira-NT/mc-publish@v3
+        with:
+          files: release/IronTanks-Community-Edition-${{ github.event.release.tag_name }}+1.21.1+neoforge.jar
+          name: ${{ github.event.release.tag_name }}+1.21.1+neoforge
+          version: ${{ github.event.release.tag_name }}+1.21.1+neoforge
+          version-type: release
+          loaders: neoforge
+          game-versions: 1.21.1
+          game-version-filter: none
+          environment: client | server
+
+          modrinth-id: ${{ env.MODRINTH_PROJECT_ID }}
+          modrinth-token: ${{ secrets.MODRINTH_TOKEN }}
+          modrinth-changelog: ${{ github.event.release.body }}
+          modrinth-dependencies: ${{ env.MODRINTH_DEPENDENCIES }}
+
+          curseforge-id: ${{ env.CURSEFORGE_PROJECT_ID }}
+          curseforge-token: ${{ secrets.CURSEFORGE_TOKEN }}
+          curseforge-changelog: ${{ github.event.release.body }}
+          curseforge-dependencies: ${{ env.CURSEFORGE_DEPENDENCIES }}
+
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          github-tag: ${{ github.event.release.tag_name }}
+          github-changelog: ''
+
+      - name: Wait 1 minute before 1.21.11
+        run: sleep "$PUBLISH_DELAY_SECONDS"
+
+      - name: Publish 1.21.11 NeoForge
+        uses: Kira-NT/mc-publish@v3
+        with:
+          files: release/IronTanks-Community-Edition-${{ github.event.release.tag_name }}+1.21.11+neoforge.jar
+          name: ${{ github.event.release.tag_name }}+1.21.11+neoforge
+          version: ${{ github.event.release.tag_name }}+1.21.11+neoforge
+          version-type: release
+          loaders: neoforge
+          game-versions: 1.21.11
+          game-version-filter: none
+          environment: client | server
+
+          modrinth-id: ${{ env.MODRINTH_PROJECT_ID }}
+          modrinth-token: ${{ secrets.MODRINTH_TOKEN }}
+          modrinth-changelog: ${{ github.event.release.body }}
+          modrinth-dependencies: ${{ env.MODRINTH_DEPENDENCIES }}
+
+          curseforge-id: ${{ env.CURSEFORGE_PROJECT_ID }}
+          curseforge-token: ${{ secrets.CURSEFORGE_TOKEN }}
+          curseforge-changelog: ${{ github.event.release.body }}
+          curseforge-dependencies: ${{ env.CURSEFORGE_DEPENDENCIES }}
+
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          github-tag: ${{ github.event.release.tag_name }}
+          github-changelog: ''
+
+
+      - name: Wait 1 minute before 26.1.2
+        run: sleep "$PUBLISH_DELAY_SECONDS"
+
+      - name: Publish 26.1.2 NeoForge
+        uses: Kira-NT/mc-publish@v3
+        with:
+          files: release/IronTanks-Community-Edition-${{ github.event.release.tag_name }}+26.1.2+neoforge.jar
+          name: ${{ github.event.release.tag_name }}+26.1.2+neoforge
+          version: ${{ github.event.release.tag_name }}+26.1.2+neoforge
+          version-type: release
+          loaders: neoforge
+          game-versions: 26.1.2
+          game-version-filter: none
+          environment: client | server
+
+          modrinth-id: ${{ env.MODRINTH_PROJECT_ID }}
+          modrinth-token: ${{ secrets.MODRINTH_TOKEN }}
+          modrinth-changelog: ${{ github.event.release.body }}
+          modrinth-dependencies: ${{ env.MODRINTH_DEPENDENCIES }}
+
+          curseforge-id: ${{ env.CURSEFORGE_PROJECT_ID }}
+          curseforge-token: ${{ secrets.CURSEFORGE_TOKEN }}
+          curseforge-changelog: ${{ github.event.release.body }}
+          curseforge-dependencies: ${{ env.CURSEFORGE_DEPENDENCIES }}
+
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          github-tag: ${{ github.event.release.tag_name }}
+          github-changelog: ''
+
+
+      - name: Wait 1 minute before 26.2
+        run: sleep "$PUBLISH_DELAY_SECONDS"
+
+      - name: Publish 26.2 NeoForge
+        uses: Kira-NT/mc-publish@v3
+        with:
+          files: release/IronTanks-Community-Edition-${{ github.event.release.tag_name }}+26.2+neoforge.jar
+          name: ${{ github.event.release.tag_name }}+26.2+neoforge
+          version: ${{ github.event.release.tag_name }}+26.2+neoforge
+          version-type: release
+          loaders: neoforge
+          game-versions: 26.2
+          game-version-filter: none
+          environment: client | server
+
+          modrinth-id: ${{ env.MODRINTH_PROJECT_ID }}
+          modrinth-token: ${{ secrets.MODRINTH_TOKEN }}
+          modrinth-changelog: ${{ github.event.release.body }}
+          modrinth-dependencies: ${{ env.MODRINTH_DEPENDENCIES }}
+
+          curseforge-id: ${{ env.CURSEFORGE_PROJECT_ID }}
+          curseforge-token: ${{ secrets.CURSEFORGE_TOKEN }}
+          curseforge-changelog: ${{ github.event.release.body }}
+          curseforge-dependencies: ${{ env.CURSEFORGE_DEPENDENCIES }}
+
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          github-tag: ${{ github.event.release.tag_name }}
+          github-changelog: ''
+
+
+      - name: Wait 1 minute before 26.3
+        run: sleep "$PUBLISH_DELAY_SECONDS"
+
+      - name: Publish 26.3 NeoForge
+        uses: Kira-NT/mc-publish@v3
+        with:
+          files: release/IronTanks-Community-Edition-${{ github.event.release.tag_name }}+26.3+neoforge.jar
+          name: ${{ github.event.release.tag_name }}+26.3+neoforge
+          version: ${{ github.event.release.tag_name }}+26.3+neoforge
+          version-type: release
+          loaders: neoforge
+          game-versions: 26.3
+          game-version-filter: none
+          environment: client | server
+
+          modrinth-id: ${{ env.MODRINTH_PROJECT_ID }}
+          modrinth-token: ${{ secrets.MODRINTH_TOKEN }}
+          modrinth-changelog: ${{ github.event.release.body }}
+          modrinth-dependencies: ${{ env.MODRINTH_DEPENDENCIES }}
+
+          curseforge-id: ${{ env.CURSEFORGE_PROJECT_ID }}
+          curseforge-token: ${{ secrets.CURSEFORGE_TOKEN }}
+          curseforge-changelog: ${{ github.event.release.body }}
+          curseforge-dependencies: ${{ env.CURSEFORGE_DEPENDENCIES }}
+
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          github-tag: ${{ github.event.release.tag_name }}
+          github-changelog: ''
