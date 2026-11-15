@@ -1,0 +1,13 @@
+{
+  "replace": false,
+  "values": [
+    {
+      "id": "#c:ingots/stainless_steel",
+      "required": false
+    },
+    {
+      "id": "#c:ingots/stainlesssteel",
+      "required": false
+    }
+  ]
+}

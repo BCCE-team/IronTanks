@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "id": "irontanks",
+  "version": "${version}",
+  "name": "Iron Tanks Community Edition",
+  "description": "Extended BuildCraft Community Edition tanks for Minecraft 26.3 Fabric",
+  "authors": ["indemnity83", "Iron Tanks Community Edition contributors"],
+  "license": "MIT",
+  "environment": "*",
+  "entrypoints": {
+    "main": ["com.indemnity83.irontanks.IronTanks"],
+    "client": ["com.indemnity83.irontanks.client.IronTanksClient"]
+  },
+  "depends": {
+    "minecraft": "26.3",
+    "java": ">=25",
+    "fabricloader": ">=0.19.5",
+    "fabric-api": ">=0.163.0",
+    "buildcraftlib": ">=8.0.30",
+    "buildcraftcore": "*",
+    "buildcraftfactory": "*"
+  },
+  "custom": { "irontanks:target": "26.3-fabric" }
+}

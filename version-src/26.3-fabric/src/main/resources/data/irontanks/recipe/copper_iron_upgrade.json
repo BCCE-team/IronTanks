@@ -1,0 +1,16 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "pattern": [
+    " g ",
+    "gcg",
+    "igi"
+  ],
+  "key": {
+    "c": "#irontanks:compat/ingots/copper",
+    "i": "#irontanks:compat/ingots/iron",
+    "g": "#irontanks:compat/glass_panes"
+  },
+  "result": {
+    "id": "irontanks:copper_iron_upgrade"
+  }
+}

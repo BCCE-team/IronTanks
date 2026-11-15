@@ -1,0 +1,215 @@
+/* Fabric 26.3 adapter. Retain the shared 14-class Iron Tanks gameplay implementation. */
+def targetName = project.name
+def buildGeneration = '26.X'
+def repositoryRoot = rootProject.file('../..').canonicalFile
+def commonConfigFile = new File(repositoryRoot, 'build-config/common.properties')
+def targetConfigFile = rootProject.file('targets.properties')
+def targetConfiguration = new Properties()
+commonConfigFile.withInputStream { targetConfiguration.load(it) }
+targetConfigFile.withInputStream { targetConfiguration.load(it) }
+
+def configuredProperty = { String key ->
+    if (project.hasProperty(key)) return project.property(key).toString().trim()
+    def target = targetConfiguration.getProperty("target.${targetName}.${key}")
+    if (target != null) return target.trim()
+    def common = targetConfiguration.getProperty("common.${key}")
+    return common == null ? null : common.trim()
+}
+def requiredProperty = { String key ->
+    def value = configuredProperty(key)
+    if (value == null || value.isEmpty()) {
+        throw new GradleException("Missing target property '${key}' for '${targetName}'")
+    }
+    value
+}
+if (targetName != '26.3-fabric') {
+    throw new GradleException("Iron Tanks Fabric currently supports 26.3-fabric only, received ${targetName}")
+}
+
+def minecraftVersion = requiredProperty('deps.minecraft')
+def modVersion = requiredProperty('mod.version')
+def archiveName = requiredProperty('mod.archive_name')
+def javaVersion = Integer.parseInt(requiredProperty('java.version'))
+def sourceLayers = [requiredProperty('source.shared_root'), requiredProperty('source.root'),
+                    requiredProperty('source.platform_root'), requiredProperty('source.overlay_root')].collect { new File(repositoryRoot, it) }
+sourceLayers.each { layer ->
+    if (!layer.isDirectory()) throw new GradleException("Missing source layer for ${targetName}: ${layer}")
+}
+
+def effectiveSourceRoot = layout.buildDirectory.dir("effective-source/${targetName}")
+def effectiveSourceDir = effectiveSourceRoot.get().asFile
+def sourceLayoutScript = new File(repositoryRoot, 'scripts/source_layout.py')
+def pythonExecutable = providers.gradleProperty('pythonExecutable')
+    .orElse(providers.environmentVariable('PYTHON'))
+    .getOrElse(System.getProperty('os.name').toLowerCase(Locale.ROOT).contains('windows') ? 'python' : 'python3')
+def prepareEffectiveSource = tasks.register('prepareEffectiveSource', Exec) {
+    group = 'build setup'
+    description = "Materialize the four Iron Tanks source layers for ${targetName}"
+    workingDir repositoryRoot
+    environment 'PYTHONDONTWRITEBYTECODE', '1'
+    inputs.files(sourceLayers, commonConfigFile, targetConfigFile, sourceLayoutScript)
+    outputs.dir(effectiveSourceRoot)
+    commandLine pythonExecutable, sourceLayoutScript.absolutePath, targetName,
+        '--config', targetConfigFile.absolutePath,
+        '--output', effectiveSourceDir.absolutePath
+}
+
+// Keep external Localizations import identical to the existing NeoForge build.
+def localizationScript = new File(repositoryRoot, 'scripts/embed_localizations.py')
+def localizationEnglish = new File(repositoryRoot, 'source-shared/src/main/resources/assets/irontanks/lang/en_us.json')
+def localizationEnglishGuide = new File(repositoryRoot, 'source-shared/src/main/resources/assets/irontanks/guide/text/en_us.json')
+def localizationOutput = layout.buildDirectory.dir('generated-resources/irontanks-localizations')
+def localizationCache = layout.buildDirectory.dir('external-localizations/checkout')
+def localizationPath = providers.gradleProperty('irontanksLocalizationsDir')
+    .orElse(providers.environmentVariable('IRONTANKS_LOCALIZATIONS_DIR')).getOrNull()
+def localizationRef = providers.gradleProperty('irontanksLocalizationsRef')
+    .orElse(providers.environmentVariable('IRONTANKS_LOCALIZATIONS_REF')).getOrElse('main')
+def localizationRemote = providers.gradleProperty('irontanksLocalizationsRemote')
+    .getOrElse('https://github.com/BCCE-team/Localizations.git')
+def stageIronTanksLocalizations = tasks.register('stageIronTanksLocalizations', Exec) {
+    group = 'build setup'
+    description = 'Import and bundle Iron Tanks localizations and Guide Book languages'
+    workingDir repositoryRoot
+    environment 'PYTHONDONTWRITEBYTECODE', '1'
+    inputs.files(localizationScript, localizationEnglish, localizationEnglishGuide)
+    inputs.property('localizationPath', localizationPath ?: '(auto)')
+    inputs.property('localizationRef', localizationRef)
+    inputs.property('localizationRemote', localizationRemote)
+    outputs.dir(localizationOutput)
+    outputs.upToDateWhen { false } // The tracked 'main' branch can move.
+    def args = [pythonExecutable, localizationScript.absolutePath, 'stage',
+        '--root', repositoryRoot.absolutePath,
+        '--english', localizationEnglish.absolutePath,
+        '--english-guide', localizationEnglishGuide.absolutePath,
+        '--cache', localizationCache.get().asFile.absolutePath,
+        '--output', localizationOutput.get().asFile.absolutePath,
+        '--ref', localizationRef, '--remote', localizationRemote]
+    if (localizationPath?.trim()) args.addAll(['--source', localizationPath])
+    if (gradle.startParameter.offline) args.add('--offline')
+    commandLine args
+}
+
+version = "${modVersion}+${targetName.replace('-', '+')}"
+group = requiredProperty('mod.group')
+base { archivesName = archiveName }
+java.toolchain.languageVersion = JavaLanguageVersion.of(javaVersion)
+
+sourceSets {
+    main {
+        java.setSrcDirs([new File(effectiveSourceDir, 'src/main/java')])
+        resources.setSrcDirs([localizationOutput.get().asFile, new File(effectiveSourceDir, 'src/main/resources')])
+    }
+    test {
+        java.setSrcDirs([new File(effectiveSourceDir, 'src/test/java')])
+        resources.setSrcDirs([new File(effectiveSourceDir, 'src/test/resources')])
+    }
+}
+repositories {
+    maven { name = 'FabricMC'; url = 'https://maven.fabricmc.net/' }
+    exclusiveContent {
+        forRepository {
+            maven { name = 'Modrinth'; url = 'https://api.modrinth.com/maven' }
+        }
+        filter { includeGroup 'maven.modrinth' }
+    }
+    mavenCentral()
+}
+
+// The exact BCCE build is pinned by Modrinth version ID, not a mutable
+// version alias. Do not accidentally substitute the NeoForge 26.3 artifact.
+def bcceCoordinate = "maven.modrinth:${requiredProperty('deps.buildcraft.modrinth_project')}:${requiredProperty('buildcraft.maven_version')}"
+configurations {
+    bcceFabricArtifact {
+        canBeResolved = true
+        canBeConsumed = false
+        transitive = false
+    }
+}
+
+loom {
+    runs {
+        client {
+            client()
+            runDir = new File(repositoryRoot, "run/${buildGeneration}/${targetName}").absolutePath
+            jvmArguments.add('--sun-misc-unsafe-memory-access=allow')
+        }
+        server {
+            server()
+            runDir = new File(repositoryRoot, "run/${buildGeneration}/${targetName}").absolutePath
+            jvmArguments.add('--sun-misc-unsafe-memory-access=allow')
+        }
+    }
+}
+
+dependencies {
+    // Minecraft 26.3 is official/named, not Yarn/intermediary; no remapJar.
+    minecraft "com.mojang:minecraft:${minecraftVersion}"
+    implementation "net.fabricmc:fabric-loader:${requiredProperty('deps.fabric_loader')}"
+    implementation "net.fabricmc.fabric-api:fabric-api:${requiredProperty('deps.fabric_api')}"
+    implementation "teamreborn:energy:${requiredProperty('deps.energy')}"
+    implementation bcceCoordinate
+    bcceFabricArtifact bcceCoordinate
+    compileOnly 'javax.annotation:javax.annotation-api:1.3.2'
+    compileOnly 'com.google.code.findbugs:jsr305:3.0.2'
+}
+logger.lifecycle("Iron Tanks ${targetName}: BCCE Fabric via Modrinth Maven ${bcceCoordinate}")
+
+// Fail with an actionable message if the supplied Modrinth version ID points
+// to another loader/Minecraft version. The artifact has to be a Fabric BCCE JAR.
+def verifyBCCE263FabricArtifact = tasks.register('verifyBCCE263FabricArtifact') {
+    group = 'verification'
+    description = 'Verify the pinned Modrinth BCCE artifact targets Fabric 26.3'
+    doLast {
+        File artifact = configurations.bcceFabricArtifact.singleFile
+        try (def jar = new java.util.zip.ZipFile(artifact)) {
+            def meta = jar.getEntry('fabric.mod.json')
+            if (meta == null) {
+                throw new GradleException("BCCE ${bcceCoordinate} is not a Fabric JAR (fabric.mod.json missing): ${artifact.name}")
+            }
+            def json = new groovy.json.JsonSlurper().parseText(jar.getInputStream(meta).getText('UTF-8'))
+            if (json.id != 'buildcraftlib' || json.depends?.minecraft != minecraftVersion ||
+                !(json.entrypoints?.main instanceof List)) {
+                throw new GradleException("BCCE ${bcceCoordinate} is not the expected BCCE Fabric ${minecraftVersion} build")
+            }
+        }
+    }
+}
+tasks.named('compileJava') { dependsOn verifyBCCE263FabricArtifact }
+
+
+tasks.named('processResources', ProcessResources) {
+    dependsOn stageIronTanksLocalizations, prepareEffectiveSource
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+    inputs.property('version', project.version.toString())
+    filesMatching('fabric.mod.json') { expand(version: project.version.toString()) }
+}
+// The test resources also come from prepareEffectiveSource. Gradle 9.8+ validates
+// implicit producer/consumer relationships, so depend on the materializer for
+// *every* ProcessResources task, not only the main processResources task.
+tasks.withType(ProcessResources).configureEach {
+    dependsOn prepareEffectiveSource
+}
+
+tasks.withType(JavaCompile).configureEach {
+    dependsOn prepareEffectiveSource
+    options.encoding = 'UTF-8'
+    options.release = javaVersion
+}
+tasks.named('jar', Jar) {
+    archiveClassifier = ''
+    from(new File(repositoryRoot, 'LICENSE.txt')) { rename { 'LICENSE_IronTanks.txt' } }
+    from(new File(repositoryRoot, 'NOTICE.md')) { rename { 'NOTICE_IronTanks.md' } }
+}
+
+def releaseOutputDir = new File(repositoryRoot, "build/libs/${buildGeneration}/${modVersion}")
+tasks.register('buildAndCollect', Copy) {
+    group = 'build'
+    description = "Build and collect ${targetName} Fabric addon jar"
+    dependsOn tasks.named('build')
+    from tasks.named('jar', Jar).flatMap { it.archiveFile }
+    into releaseOutputDir
+}
+publishing {
+    publications { register('mavenJava', MavenPublication) { artifact jar } }
+    repositories { maven { url = new File(repositoryRoot, 'mcmodsrepo/26.X').toURI() } }
+}

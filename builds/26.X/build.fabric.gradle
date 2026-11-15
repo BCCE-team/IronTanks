@@ -1,0 +1,10 @@
+plugins {
+    id 'java-library'
+    id 'idea'
+    id 'eclipse'
+    id 'maven-publish'
+    // Match the published Loom version used by BCCE's 26.3 Fabric target.
+    id 'net.fabricmc.fabric-loom' version '1.18.4'
+}
+
+apply from: new File(rootProject.file('../..').canonicalFile, 'build-logic/fabric-target.gradle')

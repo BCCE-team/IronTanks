@@ -1,0 +1,37 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "pattern": [
+    " g ",
+    "gsg",
+    "tgt"
+  ],
+  "key": {
+    "s": "#irontanks:compat/gems/diamond",
+    "t": "#irontanks:compat/ingots/aluminium",
+    "g": "#irontanks:compat/glass_panes"
+  },
+  "result": {
+    "id": "irontanks:diamond_aluminium_upgrade"
+  },
+  "fabric:load_conditions": [
+    {
+      "condition": "fabric:or",
+      "values": [
+        {
+          "condition": "fabric:tags_populated",
+          "registry": "minecraft:item",
+          "values": [
+            "c:ingots/aluminum"
+          ]
+        },
+        {
+          "condition": "fabric:tags_populated",
+          "registry": "minecraft:item",
+          "values": [
+            "c:ingots/aluminium"
+          ]
+        }
+      ]
+    }
+  ]
+}

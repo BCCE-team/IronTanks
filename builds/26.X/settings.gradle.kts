@@ -2,11 +2,23 @@ import java.util.Properties
 
 pluginManagement {
     repositories {
+        maven("https://maven.fabricmc.net/") {
+            name = "FabricMC"
+            content { includeGroupByRegex("net\\.fabricmc(\\..*)?") }
+        }
         mavenCentral()
         gradlePluginPortal()
         maven("https://maven.kikugie.dev/releases") { name = "KikuGie Releases" }
         maven("https://maven.kikugie.dev/snapshots") { name = "KikuGie Snapshots" }
         maven("https://maven.neoforged.net/releases") { name = "NeoForge" }
+    }
+    resolutionStrategy {
+        eachPlugin {
+            if (requested.id.id == "net.fabricmc.fabric-loom") {
+                val version = requested.version ?: error("Fabric Loom requires an explicit version")
+                useModule("net.fabricmc:fabric-loom:$version")
+            }
+        }
     }
 }
 

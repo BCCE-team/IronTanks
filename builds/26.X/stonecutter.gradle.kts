@@ -17,6 +17,7 @@ stonecutter {
         constants += listOf(
             "forge" to (loader == "forge"),
             "neoforge" to (loader == "neoforge"),
+            "fabric" to (loader == "fabric"),
             "legacy" to false,
             "modern" to false,
             "mc_26_x" to true,
@@ -28,9 +29,18 @@ val targets = targetConfiguration.getProperty("targets")
     ?.split(',')?.map(String::trim)?.filter(String::isNotEmpty)
     ?: error("Missing non-empty targets in targets.properties")
 
+// Keep the established release matrix unchanged until the Maven-backed
+// Fabric preview passes a real compile and in-game smoke test.
+val releasedTargets = targets.filterNot { it.endsWith("-fabric") }
 tasks.register("buildAndCollect") {
     group = "build"
-    description = "Build every 26.X Iron Tanks target and collect release jars"
+    description = "Build released 26.X NeoForge targets and collect jars"
+    dependsOn(releasedTargets.map { target -> ":$target:buildAndCollect" })
+}
+
+tasks.register("buildAllIncludingFabric") {
+    group = "build"
+    description = "Build every 26.X target, including Maven-backed Fabric preview"
     dependsOn(targets.map { target -> ":$target:buildAndCollect" })
 }
 

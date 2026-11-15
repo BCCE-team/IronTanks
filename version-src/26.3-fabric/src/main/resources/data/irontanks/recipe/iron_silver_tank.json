@@ -1,0 +1,25 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "pattern": [
+    " g ",
+    "gtg",
+    "sgs"
+  ],
+  "key": {
+    "s": "#c:ingots/silver",
+    "g": "#irontanks:compat/glass_blocks",
+    "t": "irontanks:iron_tank"
+  },
+  "result": {
+    "id": "irontanks:silver_tank"
+  },
+  "fabric:load_conditions": [
+    {
+      "condition": "fabric:tags_populated",
+      "registry": "minecraft:item",
+      "values": [
+        "c:ingots/silver"
+      ]
+    }
+  ]
+}

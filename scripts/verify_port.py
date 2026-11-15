@@ -79,7 +79,7 @@ def collect_recipe_tags(value) -> set[str]:
 
 
 def validate_recipe_tags(target: str, resources: Path) -> None:
-    modern = target.endswith('neoforge')
+    modern = target.endswith(('neoforge', 'fabric'))
     recipe_dir = resources / ('data/irontanks/recipe' if modern else 'data/irontanks/recipes')
     recipes = sorted(recipe_dir.glob('*.json'))
     if len(recipes) != 30:
@@ -97,12 +97,33 @@ def validate_recipe_tags(target: str, resources: Path) -> None:
         obsolete_glass = sorted(tag for tag in tags if tag in {'c:glass', 'c:glass/colorless'})
         if obsolete_glass:
             fail(f'{target}: obsolete NeoForge glass tags remain: {obsolete_glass}')
-        for required in (
-            'c:glass_blocks', 'c:glass_blocks/colorless',
-            'c:glass_panes', 'c:glass_panes/colorless',
-        ):
-            if required not in tags:
-                fail(f'{target}: expected common recipe tag is missing: {required}')
+        if target.endswith('-fabric'):
+            # Fabric 26.3 ingredient codecs do not accept arrays of tag choices.
+            # The alternative glass tags are moved into locally-owned item tags
+            # with a vanilla fallback, so recipes remain valid without add-ons.
+            for ingredient, tag_file, expected in (
+                ('irontanks:compat/glass_blocks', 'glass_blocks',
+                 {'#c:glass_blocks', '#c:glass_blocks/colorless', 'minecraft:glass'}),
+                ('irontanks:compat/glass_panes', 'glass_panes',
+                 {'#c:glass_panes', '#c:glass_panes/colorless', 'minecraft:glass_pane'}),
+            ):
+                if ingredient not in tags:
+                    fail(f'{target}: expected compat recipe tag is missing: {ingredient}')
+                definition = resources / 'data/irontanks/tags/item/compat' / f'{tag_file}.json'
+                if not definition.is_file():
+                    fail(f'{target}: missing Fabric compat tag definition: {definition.name}')
+                    continue
+                entries = read_json(definition).get('values', [])
+                actual = {entry if isinstance(entry, str) else entry.get('id') for entry in entries}
+                if not expected <= actual:
+                    fail(f'{target}: Fabric compat tag {tag_file} lost its vanilla/common members')
+        else:
+            for required in (
+                'c:glass_blocks', 'c:glass_blocks/colorless',
+                'c:glass_panes', 'c:glass_panes/colorless',
+            ):
+                if required not in tags:
+                    fail(f'{target}: expected common recipe tag is missing: {required}')
     else:
         leaked_common = sorted(tag for tag in tags if tag.startswith('c:'))
         if leaked_common:
@@ -174,8 +195,15 @@ def validate_target(target: str, props: dict[str, str]) -> None:
             fail(f'{target}: removed NeoForge 21.11 EventBusSubscriber bus selector remains')
         if '@EventBusSubscriber(modid = IronTanks.MODID, value = Dist.CLIENT)' not in java_text:
             fail(f'{target}: client mod event subscriber is not using the NeoForge 21.11 annotation shape')
+    elif target.endswith('fabric'):
+        if 'FabricStorageLookups.registerAddonType(' not in java_text:
+            fail(f'{target}: Fabric native fluid lookup registration is missing')
+        if 'import net.neoforged.' in java_text or 'Capabilities.Fluid.BLOCK' in java_text:
+            fail(f'{target}: NeoForge dependency leaked into Fabric sources')
+        if 'net.fabricmc.api.ClientModInitializer' not in java_text:
+            fail(f'{target}: Fabric client entrypoint is missing')
     elif target.endswith('neoforge'):
-        if 'Capabilities.FluidHandler.BLOCK' not in java_text:
+        if 'Capabilities.FluidHandler.BLOCK'  not in java_text:
             fail(f'{target}: NeoForge fluid capability registration is missing')
         if '@EventBusSubscriber(modid = IronTanks.MODID, bus = EventBusSubscriber.Bus.MOD, value = Dist.CLIENT)' not in java_text:
             fail(f'{target}: legacy NeoForge client events must remain explicitly subscribed to the MOD bus')
@@ -190,6 +218,11 @@ def validate_target(target: str, props: dict[str, str]) -> None:
                 pattern = rf'{field}\s*=\s*registerTank\("creative_tank",\s*properties\s*->\s*new\s+{class_name}\({capacity},\s*properties\)\)'
             else:
                 pattern = rf'{field}\s*=\s*registerTank\("[a-z_]+",\s*properties\s*->\s*new\s+{class_name}\({capacity},\s*{re.escape(hardness)},\s*{re.escape(resistance)},\s*properties\)\)'
+        elif target.endswith('fabric'):
+            if field == 'CREATIVE_TANK':
+                pattern = rf'{field}\s*=\s*registerTank\("creative_tank",\s*\(\)\s*->\s*new\s+{class_name}\({capacity}\)\)'
+            else:
+                pattern = rf'{field}\s*=\s*registerTank\("[a-z_]+",\s*\(\)\s*->\s*new\s+{class_name}\({capacity},\s*{re.escape(hardness)},\s*{re.escape(resistance)}\)\)'
         elif field == 'CREATIVE_TANK':
             pattern = rf'{field}\s*=\s*BLOCKS\.register\("creative_tank",\s*\(\)\s*->\s*new\s+{class_name}\({capacity}\)\)'
         else:
@@ -212,15 +245,19 @@ def validate_target(target: str, props: dict[str, str]) -> None:
         float(prop(props, target, 'pack.resource_format')),
         float(prop(props, target, 'pack.data_format')),
     )
-    actual_pack = (
-        pack.get('pack_format'), pack.get('forge:resource_pack_format'), float(pack.get('forge:data_pack_format'))
-    )
+    if target.endswith('fabric'):
+        actual_pack = (pack.get('pack_format'), pack.get('min_format'), pack.get('max_format'))
+        expected_pack = (expected_pack[0], expected_pack[1], expected_pack[1])
+    else:
+        actual_pack = (
+            pack.get('pack_format'), pack.get('forge:resource_pack_format'), float(pack.get('forge:data_pack_format'))
+        )
     if actual_pack != expected_pack:
         fail(f'{target}: pack formats {actual_pack} != {expected_pack}')
 
     validate_recipe_tags(target, resources)
 
-    if target in ('1.21.11-neoforge', '26.1.2-neoforge', '26.2-neoforge', '26.3-neoforge'):
+    if target in ('1.21.11-neoforge', '26.1.2-neoforge', '26.2-neoforge', '26.3-neoforge', '26.3-fabric'):
         legacy_models = {path.stem for path in (resources / 'assets/irontanks/models/item').glob('*.json')}
         client_items = {path.stem for path in (resources / 'assets/irontanks/items').glob('*.json')}
         if client_items != legacy_models:
@@ -232,12 +269,28 @@ def validate_target(target: str, props: dict[str, str]) -> None:
                 fail(f'{target}: legacy ingredient object remains in {recipe.relative_to(output)}')
 
     loader = target.rsplit('-', 1)[1]
-    metadata_rel = 'META-INF/neoforge.mods.toml' if loader == 'neoforge' else 'META-INF/mods.toml'
+    metadata_rel = 'fabric.mod.json' if loader == 'fabric' else ('META-INF/neoforge.mods.toml' if loader == 'neoforge' else 'META-INF/mods.toml')
     metadata_path = resources / metadata_rel
     if not metadata_path.is_file():
         fail(f'{target}: missing {metadata_rel}')
         return
     metadata = metadata_path.read_text(encoding='utf-8')
+    if loader == 'fabric':
+        data = read_json(metadata_path)
+        expected_version = f"{prop(props, target, 'mod.version')}+{target.replace('-', '+')}"
+        if data.get('id') != 'irontanks' or data.get('version') != '${version}':
+            fail(f'{target}: invalid Fabric addon mod metadata')
+        depends = data.get('depends', {})
+        for mod_id in ('buildcraftlib', 'buildcraftcore', 'buildcraftfactory', 'fabricloader', 'fabric-api'):
+            if mod_id not in depends:
+                fail(f'{target}: missing Fabric dependency {mod_id}')
+        if data.get('entrypoints', {}).get('main') != ['com.indemnity83.irontanks.IronTanks']:
+            fail(f'{target}: wrong Fabric initializer')
+        if data.get('entrypoints', {}).get('client') != ['com.indemnity83.irontanks.client.IronTanksClient']:
+            fail(f'{target}: wrong Fabric client initializer')
+        if 'net.neoforged' in metadata:
+            fail(f'{target}: NeoForge metadata leaked into Fabric')
+        return
     values = {
         'mod_id': prop(props, target, 'mod.id'),
         'mod_name': prop(props, target, 'mod.name'),
@@ -283,7 +336,17 @@ def validate_build_files() -> None:
     forge = (ROOT / 'builds/legacy/build.forge.gradle').read_text(encoding='utf-8')
     if 'implementation fg.deobf(buildCraftCoordinate)' not in forge:
         fail('Forge BCCE Maven dependency is not deobfuscated')
+    fabric = (ROOT / 'build-logic/fabric-target.gradle').read_text(encoding='utf-8')
+    for token in ('sourceLayoutScript', 'prepareEffectiveSource', 'stageIronTanksLocalizations',
+                  "includeGroup 'maven.modrinth'", "requiredProperty('buildcraft.maven_version')",
+                  'implementation bcceCoordinate', 'verifyBCCE263FabricArtifact',
+                  "tasks.register('buildAndCollect'"):
+        if token not in fabric:
+            fail(f'Fabric build logic missing {token!r}')
     neo = (ROOT / 'build-logic/neoforge-target.gradle').read_text(encoding='utf-8')
+    for forbidden in ('irontanksBCCE263FabricJar', 'IRONTANKS_BCCE_FABRIC_JAR', 'modImplementation files(bcceJar)'):
+        if forbidden in fabric:
+            fail(f'Fabric build logic must not require local BCCE JAR: {forbidden}')
     if 'implementation buildCraftCoordinate' not in neo:
         fail('NeoForge BCCE Maven dependency is not configured as implementation')
     if "createMinecraftArtifacts" not in neo or 'dependsOn prepareEffectiveSource' not in neo:
@@ -303,14 +366,18 @@ def main() -> None:
     props = load_properties()
     if prop(props, '1.19.2-forge', 'mod.license') != 'MIT':
         fail('ITCE must preserve the original MIT license')
+    if prop(props, '26.3-fabric', 'buildcraft.maven_version') != 'XTATlTsu':
+        fail('Fabric 26.3 BCCE dependency must use the pinned Modrinth version ID XTATlTsu')
     if prop(props, '1.19.2-forge', 'deps.buildcraft.modrinth_project') != 'z3Aj5eOl':
         fail('BCCE Modrinth Maven project ID must remain pinned to z3Aj5eOl')
     for target in target_ids(props):
-        expected = f"8.0.26+{target.replace('-', '+')}"
+        expected = (f'8.0.30+{target.replace("-", "+")}' if target.endswith('fabric')
+                    else f'8.0.26+{target.replace("-", "+")}')
         if prop(props, target, 'buildcraft.version') != expected:
             fail(f'{target}: BCCE Maven version must be pinned to {expected}')
-        if prop(props, target, 'buildcraft.version_range') != '[8.0.24,)':
-            fail(f'{target}: minimum supported BCCE version must be 8.0.24')
+        min_version = '>=8.0.30' if target.endswith('fabric') else '[8.0.24,)'
+        if prop(props, target, 'buildcraft.version_range') != min_version:
+            fail(f'{target}: incorrect minimum BCCE version; expected {min_version}')
 
     validate_common_resources()
     validate_build_files()

@@ -1,0 +1,25 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "pattern": [
+    "sgs",
+    "gcg",
+    "sgs"
+  ],
+  "key": {
+    "c": "#irontanks:compat/ingots/copper",
+    "s": "#c:ingots/silver",
+    "g": "#irontanks:compat/glass_panes"
+  },
+  "result": {
+    "id": "irontanks:copper_silver_upgrade"
+  },
+  "fabric:load_conditions": [
+    {
+      "condition": "fabric:tags_populated",
+      "registry": "minecraft:item",
+      "values": [
+        "c:ingots/silver"
+      ]
+    }
+  ]
+}

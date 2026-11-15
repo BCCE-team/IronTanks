@@ -1,0 +1,14 @@
+{
+  "replace": false,
+  "values": [
+    "minecraft:glass_pane",
+    {
+      "id": "#c:glass_panes/colorless",
+      "required": false
+    },
+    {
+      "id": "#c:glass_panes",
+      "required": false
+    }
+  ]
+}

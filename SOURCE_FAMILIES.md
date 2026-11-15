@@ -36,7 +36,7 @@ Targets:
 
 Build root: `builds/26.X`
 
-NeoForge targets use Java 25 and Gradle 9.1.0. The modern and 26.X
+NeoForge targets use Java 25 and Gradle 9.8.1. The modern and 26.X
 build scripts share `build-logic/neoforge-target.gradle` to keep packaging,
 localization imports, dependency declarations and output layouts identical.
 
@@ -169,3 +169,34 @@ compatible-fluid checks, fluid containers, pipe capabilities, GUI/comparator
 and persistence). Specialized Void/Creative tiers do not join normal columns;
 fluid transactions of the Void tank must not delete normal tank contents.
 The shared behavior contract is checked in `scripts/tests/test_tank_parity.py`.
+
+## Fabric 26.3 development target
+
+The `26.3-fabric` node uses `source-platforms/fabric`, a small platform
+adapter to the real Fabric 26.3 BCCE implementation. It retains all 14
+classes, 13 tank types, 14 upgrades, 30 recipes, loot, models and Guide Book
+pages from the existing 26.X NeoForge target.
+
+The native BCCE Fabric `TileTank` implements `buildcraft.lib.fluid.FluidStack`
+under an inherited 1-tank `IFluidHandler` contract. The addon registers its
+three BE types in `FabricStorageLookups` so Fabric's `FluidStorage.SIDED` can
+expose the inherited handler to vanilla Fabric pipes, Fabric mods and BCCE.
+Upgrade interactions are intercepted by Fabric `UseBlockCallback` because
+NeoForge's `onItemUseFirst` does not run and BuildCraft blocks handle normal
+right-clicks before vanilla `Item#useOn`.
+
+The Fabric build requires Java 25 and Loom 1.18.4. BCCE resolves directly
+from Modrinth Maven as `maven.modrinth:z3Aj5eOl:XTATlTsu`, pinned through
+`target.26.3-fabric.buildcraft.maven_version`. No local BCCE JAR is required.
+Run:
+
+```
+cd builds/26.X
+./gradlew :26.3-fabric:buildAndCollect
+```
+
+The build verifies that the fetched BCCE JAR declares Fabric `buildcraftlib`
+for Minecraft 26.3 before Java compilation. The `buildAndCollect` aggregate
+still builds the established NeoForge versions; `buildAllIncludingFabric`
+opts into all four 26.X targets. The existing publish pipeline remains seven
+targets pending a confirmed Fabric smoke test.

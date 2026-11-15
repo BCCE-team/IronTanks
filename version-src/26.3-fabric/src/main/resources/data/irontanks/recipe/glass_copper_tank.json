@@ -1,0 +1,16 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "pattern": [
+    " g ",
+    "gtg",
+    "cgc"
+  ],
+  "key": {
+    "c": "#irontanks:compat/ingots/copper",
+    "g": "#irontanks:compat/glass_blocks",
+    "t": "buildcraftfactory:tank"
+  },
+  "result": {
+    "id": "irontanks:copper_tank"
+  }
+}

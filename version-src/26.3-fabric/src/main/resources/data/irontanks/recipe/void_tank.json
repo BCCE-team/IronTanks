@@ -1,0 +1,17 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "pattern": [
+    " g ",
+    "gtg",
+    "bgr"
+  ],
+  "key": {
+    "b": "#irontanks:compat/dyes/black",
+    "r": "#irontanks:compat/dusts/redstone",
+    "t": "buildcraftfactory:tank",
+    "g": "#irontanks:compat/glass_blocks"
+  },
+  "result": {
+    "id": "irontanks:void_tank"
+  }
+}

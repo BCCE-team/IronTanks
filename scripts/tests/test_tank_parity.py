@@ -22,7 +22,7 @@ PACKAGE = 'com/indemnity83/irontanks'
 TARGETS = (
     '1.19.2-forge', '1.20.1-forge',
     '1.21.1-neoforge', '1.21.11-neoforge',
-    '26.1.2-neoforge', '26.2-neoforge', '26.3-neoforge',
+    '26.1.2-neoforge', '26.2-neoforge', '26.3-neoforge', '26.3-fabric',
 )
 SPECIALS = {'VOID_TANK', 'CREATIVE_TANK'}
 
@@ -44,14 +44,16 @@ class OriginalTankContracts(unittest.TestCase):
     def java(self, target: str, subpath: str) -> str:
         return (self.roots[target] / 'src/main/java' / PACKAGE / subpath).read_text(encoding='utf-8')
 
-    def test_all_seven_pinned_targets_are_independent_builds(self):
+    def test_all_eight_pinned_targets_are_independent_builds(self):
         self.assertEqual(tuple(target_ids(self.config)), TARGETS)
         for target in TARGETS:
             with self.subTest(target=target):
                 prefix = f'target.{target}.'
+                expected_version = '8.0.30' if target.endswith('-fabric') else '8.0.26'
+                expected_range = '>=8.0.30' if target.endswith('-fabric') else '[8.0.24,)'
                 self.assertEqual(self.config[prefix+'buildcraft.version'],
-                                 '8.0.26+' + target.replace('-', '+'))
-                self.assertEqual(self.config[prefix+'buildcraft.version_range'], '[8.0.24,)')
+                                 expected_version + '+' + target.replace('-', '+'))
+                self.assertEqual(self.config[prefix+'buildcraft.version_range'], expected_range)
                 if target.startswith('26.'):
                     self.assertEqual(self.config[prefix+'java.version'], '25')
                     self.assertEqual(self.config[prefix+'source.family'], '26.X')
@@ -190,7 +192,7 @@ class OriginalTankContracts(unittest.TestCase):
                     self.assertIn('FluidAction.', src)
                     self.assertNotIn(old_import, src)
 
-    def test_all_seven_use_correct_platform_fluid_capabilities(self):
+    def test_all_eight_use_correct_platform_fluid_capabilities(self):
         for target in TARGETS:
             with self.subTest(target=target):
                 mod = self.java(target, 'IronTanks.java')
@@ -205,6 +207,11 @@ class OriginalTankContracts(unittest.TestCase):
                     self.assertIn('IronTanksBlockEntities.TANK.get()', mod)
                     self.assertIn('IronTanksBlockEntities.VOID_TANK.get()', mod)
                     self.assertIn('Capabilities.FluidHandler.BLOCK', mod)
+                elif target.endswith('fabric'):
+                    self.assertIn('FabricStorageLookups.registerAddonType(', mod)
+                    self.assertIn('IronTanksBlockEntities.TANK.get()', mod)
+                    self.assertIn('IronTanksBlockEntities.VOID_TANK.get()', mod)
+                    self.assertNotIn('net.neoforged.', mod)
                 else:
                     self.assertIn('IronTanksBlockEntities.TANK.get()', mod)
                     self.assertIn('IronTanksBlockEntities.VOID_TANK.get()', mod)
@@ -212,14 +219,17 @@ class OriginalTankContracts(unittest.TestCase):
                     self.assertIn('TransferInterop.exportFluids(', mod)
 
     def test_26x_resources_pack_and_items_are_complete(self):
-        for target in TARGETS[-3:]:
+        for target in (t for t in TARGETS if t.startswith('26.')):
             with self.subTest(target=target):
                 root = self.roots[target] / 'src/main/resources'
-                self.assertTrue((root/'META-INF/neoforge.mods.toml').is_file())
+                self.assertTrue((root/('fabric.mod.json' if target.endswith('fabric') else 'META-INF/neoforge.mods.toml')).is_file())
                 pack = json.loads((root/'pack.mcmeta').read_text(encoding='utf-8'))['pack']
                 prefix = f'target.{target}.'
                 self.assertEqual(float(pack['pack_format']), float(self.config[prefix+'pack.format']))
-                self.assertEqual(float(pack['forge:data_pack_format']), float(self.config[prefix+'pack.data_format']))
+                if not target.endswith('fabric'):
+                    self.assertEqual(float(pack['forge:data_pack_format']), float(self.config[prefix+'pack.data_format']))
+                else:
+                    self.assertEqual(float(pack['min_format']), float(self.config[prefix+'pack.resource_format']))
                 items = list((root/'assets/irontanks/items').glob('*.json'))
                 recipes = list((root/'data/irontanks/recipe').glob('*.json'))
                 loot = list((root/'data/irontanks/loot_table/blocks').glob('*.json'))
@@ -229,7 +239,7 @@ class OriginalTankContracts(unittest.TestCase):
                 self.assertTrue((root/'data/minecraft/tags/block/mineable/pickaxe.json').is_file())
 
     def test_26x_can_be_preprocessed_without_remnants_or_legacy_chat_format(self):
-        for target in TARGETS[-3:]:
+        for target in (t for t in TARGETS if t.startswith('26.')):
             with self.subTest(target=target):
                 roots = list((self.roots[target]/'src/main/java').rglob('*.java'))
                 self.assertEqual(len(roots), 14)
@@ -241,19 +251,55 @@ class OriginalTankContracts(unittest.TestCase):
                 self.assertNotRegex(upgrade, r'@Override\s+public InteractionResult onItemUseFirst')
                 self.assertIn('public InteractionResult useOn(', upgrade)
 
+    def test_fabric_263_bootstrap_storage_and_upgrade_priority(self):
+        target = '26.3-fabric'
+        mod = self.java(target, 'IronTanks.java')
+        client = self.java(target, 'client/IronTanksClient.java')
+        blocks = self.java(target, 'common/registry/IronTanksBlocks.java')
+        items = self.java(target, 'common/registry/IronTanksItems.java')
+        meta = json.loads((self.roots[target] / 'src/main/resources/fabric.mod.json').read_text(encoding='utf-8'))
+        self.assertIn('implements ModInitializer', mod)
+        self.assertLess(mod.index('IronTanksBlocks.register();'), mod.index('IronTanksBlockEntities.register();'))
+        self.assertEqual(mod.count('FabricStorageLookups.registerAddonType('), 3)
+        self.assertIn('UseBlockCallback.EVENT.register(', mod)
+        self.assertIn('upgrade.useOn(new UseOnContext(player, hand, hit))', mod)
+        self.assertIn('instanceof UpgradeItem upgrade', mod)
+        self.assertIn('implements ClientModInitializer', client)
+        self.assertEqual(client.count('registerTankRenderer(IronTanksBlockEntities.'), 3)
+        self.assertIn('new RenderTank(context)', client)
+        self.assertIn('RegistryCompat.registerBlock(', blocks)
+        self.assertIn('RegistryCompat.registerItem(', items)
+        self.assertIn('useBlockDescriptionPrefix()', items)
+        self.assertNotIn('net.neoforged', mod + client + blocks + items)
+        self.assertEqual(meta['depends']['buildcraftlib'], '>=8.0.30')
+        self.assertEqual(meta['depends']['minecraft'], '26.3')
+        self.assertEqual(meta['entrypoints']['main'], ['com.indemnity83.irontanks.IronTanks'])
+        self.assertEqual(meta['entrypoints']['client'], ['com.indemnity83.irontanks.client.IronTanksClient'])
+        gradle = (ROOT/'build-logic/fabric-target.gradle').read_text(encoding='utf-8')
+        self.assertIn('implementation bcceCoordinate', gradle)
+        self.assertIn('stageIronTanksLocalizations', gradle)
+        self.assertIn("includeGroup 'maven.modrinth'", gradle)
+        self.assertIn("requiredProperty('buildcraft.maven_version')", gradle)
+        self.assertIn('verifyBCCE263FabricArtifact', gradle)
+        self.assertNotIn('irontanksBCCE263FabricJar', gradle)
+        self.assertEqual(self.config['target.26.3-fabric.buildcraft.maven_version'], 'XTATlTsu')
+
     def test_release_ci_and_toolchains_cover_new_targets(self):
         ci = (ROOT/'.github/workflows/ci.yml').read_text(encoding='utf-8')
         publish = (ROOT/'.github/workflows/publish.yml').read_text(encoding='utf-8')
         gradle26 = (ROOT/'builds/26.X/gradle/wrapper/gradle-wrapper.properties').read_text(encoding='utf-8')
-        self.assertIn('gradle-9.1.0-bin.zip', gradle26)
+        self.assertIn('gradle-9.8.1-bin.zip', gradle26)
+        self.assertIn('distributionSha256Sum=dce76f55f8e251a3a1f130eb120f30b3d271de2b76c9b0729d316b5a1b6dc01f', gradle26)
         self.assertIn("id 'net.neoforged.moddev' version '2.0.148'",(ROOT/'builds/26.X/build.neoforge.gradle').read_text(encoding='utf-8'))
         self.assertIn("java: '25'", ci)
         self.assertIn("java: '25'", publish)
         self.assertIn('test_tank_parity.py', ci)
         self.assertIn('test_tank_parity.py', publish)
-        for target in TARGETS[-3:]:
+        for target in (t for t in TARGETS if t.startswith('26.') and t.endswith('neoforge')):
             self.assertIn('Publish '+target.split('-')[0]+' NeoForge', publish)
-        self.assertEqual(publish.count('uses: Kira-NT/mc-publish@v3'), len(TARGETS))
+        # Fabric remains outside auto-publication until its Maven-backed build passes gameplay smoke tests.
+        self.assertIn('26.3-fabric', publish)
+        self.assertEqual(publish.count('uses: Kira-NT/mc-publish@v3'), len(TARGETS) - 1)
 
 
 if __name__ == '__main__':

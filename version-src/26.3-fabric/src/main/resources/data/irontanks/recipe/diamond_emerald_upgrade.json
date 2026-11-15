@@ -1,0 +1,16 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "pattern": [
+    " g ",
+    "gdg",
+    "ege"
+  ],
+  "key": {
+    "d": "#irontanks:compat/gems/diamond",
+    "e": "#irontanks:compat/gems/emerald",
+    "g": "#irontanks:compat/glass_panes"
+  },
+  "result": {
+    "id": "irontanks:diamond_emerald_upgrade"
+  }
+}

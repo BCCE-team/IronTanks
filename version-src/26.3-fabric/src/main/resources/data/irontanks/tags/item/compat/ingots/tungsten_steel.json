@@ -1,0 +1,13 @@
+{
+  "replace": false,
+  "values": [
+    {
+      "id": "#c:ingots/tungsten_steel",
+      "required": false
+    },
+    {
+      "id": "#c:ingots/tungstensteel",
+      "required": false
+    }
+  ]
+}

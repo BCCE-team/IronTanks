@@ -1,0 +1,37 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "pattern": [
+    " g ",
+    "gtg",
+    "mgm"
+  ],
+  "key": {
+    "m": "#irontanks:compat/ingots/aluminium",
+    "g": "#irontanks:compat/glass_blocks",
+    "t": "irontanks:diamond_tank"
+  },
+  "result": {
+    "id": "irontanks:aluminium_tank"
+  },
+  "fabric:load_conditions": [
+    {
+      "condition": "fabric:or",
+      "values": [
+        {
+          "condition": "fabric:tags_populated",
+          "registry": "minecraft:item",
+          "values": [
+            "c:ingots/aluminum"
+          ]
+        },
+        {
+          "condition": "fabric:tags_populated",
+          "registry": "minecraft:item",
+          "values": [
+            "c:ingots/aluminium"
+          ]
+        }
+      ]
+    }
+  ]
+}

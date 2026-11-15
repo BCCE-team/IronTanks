@@ -76,12 +76,16 @@ def validate_generation(name: str, targets: list[str], props: dict[str, str]) ->
         if not script.is_file():
             fail(f"{target}: missing {script.relative_to(ROOT)}")
         text = script.read_text(encoding="utf-8")
-        impl = (ROOT / 'build-logic/neoforge-target.gradle').read_text(encoding='utf-8') if loader == 'neoforge' else text
+        impl = (ROOT / f'build-logic/{loader}-target.gradle').read_text(encoding='utf-8') if loader in ('neoforge', 'fabric') else text
         for token in ("sourceLayoutScript", "prepareEffectiveSource", "effectiveSourceRoot", "buildAndCollect"):
             if token not in impl:
                 fail(f"{script.relative_to(ROOT)}: missing build behavior {token}")
         if loader == 'neoforge' and "apply from: new File(rootProject.file('../..').canonicalFile, 'build-logic/neoforge-target.gradle')" not in text:
             fail(f"{script.relative_to(ROOT)}: must apply the shared NeoForge build logic")
+        if loader == 'fabric' and "apply from: new File(rootProject.file('../..').canonicalFile, 'build-logic/fabric-target.gradle')" not in text:
+            fail(f'{script.relative_to(ROOT)}: must apply Fabric build logic')
+        if loader == 'fabric' and "id 'net.fabricmc.fabric-loom' version '1.18.4'" not in text:
+            fail(f'{script.relative_to(ROOT)}: Fabric Loom 1.18.4 must be pinned')
         if loader == "forge" and "id 'net.minecraftforge.gradle' version '6.0.54'" not in text:
             fail(f"{script.relative_to(ROOT)}: ForgeGradle 6.0.54 is not pinned")
         if loader == 'neoforge':
@@ -95,12 +99,16 @@ def validate_generation(name: str, targets: list[str], props: dict[str, str]) ->
             "buildcraft.version", "buildcraft.version_range", "pack.format", "pack.resource_format", "pack.data_format",
         ):
             prop(props, target, key)
-        prop(props, target, "deps.forge" if loader == "forge" else "deps.neoforge")
+        if loader == 'fabric':
+            for key in ('deps.fabric_loader', 'deps.fabric_api', 'deps.energy'):
+                prop(props, target, key)
+        else:
+            prop(props, target, 'deps.forge' if loader == 'forge' else 'deps.neoforge')
         if name == '26.X' and prop(props, target, 'java.version') != '25':
             fail(f'{target}: Minecraft 26.X must use Java 25')
 
     gradle = wrapper_version(root)
-    expected_gradle = '9.1.0' if name == '26.X' else '8.8'
+    expected_gradle = '9.8.1' if name == '26.X' else '8.8'
     if gradle != expected_gradle:
         fail(f'{name}: expected Gradle {expected_gradle}, got {gradle}')
     return gradle
@@ -143,7 +151,7 @@ def main() -> None:
 
     required_targets = {
         '1.19.2-forge', '1.20.1-forge', '1.21.1-neoforge', '1.21.11-neoforge',
-        '26.1.2-neoforge', '26.2-neoforge', '26.3-neoforge',
+        '26.1.2-neoforge', '26.2-neoforge', '26.3-neoforge', '26.3-fabric',
     }
     if set(targets) != required_targets:
         fail(f"production target matrix mismatch: {targets}")

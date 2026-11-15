@@ -1,0 +1,16 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "pattern": [
+    " g ",
+    "gtg",
+    "dgd"
+  ],
+  "key": {
+    "d": "#irontanks:compat/gems/diamond",
+    "g": "#irontanks:compat/glass_blocks",
+    "t": "irontanks:gold_tank"
+  },
+  "result": {
+    "id": "irontanks:diamond_tank"
+  }
+}

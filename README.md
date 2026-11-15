@@ -11,6 +11,7 @@ Unofficial community-maintained port of Iron Tanks for BuildCraft Community Edit
 - Minecraft 26.1.2 — NeoForge
 - Minecraft 26.2 — NeoForge
 - Minecraft 26.3 — NeoForge
+- Minecraft 26.3 — Fabric
 
 The addon registers its BuildCraft Guide Book content through `buildcraft.api.v2` and uses loader-native fluid capabilities for platform integration.
 
@@ -20,7 +21,7 @@ ITCE mirrors BCCE's current build/source architecture:
 
 - **legacy** build generation — 1.19.2 Forge and 1.20.1 Forge;
 - **modern** build generation — 1.21.1 and 1.21.11 NeoForge;
-- **26.X** build generation — 26.1.2, 26.2 and 26.3 NeoForge (Java 25, Gradle 9.1.0, ModDevGradle 2.0.148).
+- **26.X** build generation — 26.1.2, 26.2, 26.3 NeoForge and 26.3 Fabric
 
 Each generation has an independent Gradle wrapper, Stonecutter controller and target matrix under `builds/legacy`, `builds/modern`, or `builds/26.X`.
 
@@ -37,7 +38,7 @@ This keeps common Iron Tanks gameplay in one place while isolating loader regist
 
 ## Building
 
-BCCE 8.0.26 is resolved directly from Modrinth Maven. No local BuildCraft jars are required.
+All eight targets now resolve BCCE from **Modrinth Maven** without a local BuildCraft JAR. Forge/NeoForge targets use their existing BCCE 8.0.26 coordinates. Fabric 26.3 pins the supplied Modrinth version ID `XTATlTsu` (project `z3Aj5eOl`). It remains a preview pending a real compile and gameplay smoke test.
 
 ```bash
 ./build-all.sh
@@ -60,7 +61,37 @@ cd builds/26.X
 ./gradlew buildAndCollect
 ```
 
-Each target pins the matching BCCE artifact (`8.0.26+<minecraft>+<loader>`) so Forge and NeoForge builds cannot accidentally resolve a jar for another Minecraft version. The mod metadata requires **BCCE 8.0.24 or newer** at runtime.
+Every released target pins the matching BCCE artifact (`8.0.26+<minecraft>+<loader>`). Released NeoForge/Forge mod metadata requires **BCCE 8.0.24 or newer**.
+
+### Build the 26.3 Fabric preview
+
+**Java 25**, Gradle 9.8.1 and network access to Modrinth Maven are required. No local BCCE build, path flag or manual JAR installation is necessary for the development compile:
+
+On Windows, install JDK 25 if it is not already installed: `winget install --id EclipseAdoptium.Temurin.25.JDK -e`. The checked-in `builds/26.X/gradle/gradle-daemon-jvm.properties` selects **JDK 25 for the 26.X Gradle daemon**, even when `java -version` in the outer PowerShell session reports Java 21. It does not change the legacy or modern build JVM configuration. Close and reopen the terminal after installing Java 25, then run `./build-all.ps1 assemble` from the repo root. Java 25 must be installed or available through a configured Gradle toolchain; declaring `java.toolchain.languageVersion = 25` alone is not sufficient to load Fabric Loom during Gradle configuration.
+
+```bash
+cd /path/to/IronTanks/builds/26.X
+./gradlew :26.3-fabric:buildAndCollect
+```
+
+The addon resolves `maven.modrinth:z3Aj5eOl:XTATlTsu` through `implementation` and checks that the resolved JAR is a `buildcraftlib` Fabric mod for Minecraft 26.3. The version ID is pinned in `builds/26.X/targets.properties` under `target.26.3-fabric.buildcraft.maven_version`, separate from the in-mod semantic version. If the Modrinth version ID refers to a different loader or Minecraft release, Gradle fails early with a clear error instead of building against an incompatible JAR.
+
+**Fabric 26.3 crafting recipes:** The Fabric target keeps the same 30 shaped recipes
+and original inputs/results, but routes alternative glass/common-material tags
+through `irontanks:compat/*` item tags. Vanilla glass, panes, copper, iron,
+gold, diamonds, emeralds, redstone and black dye remain usable without a
+third-party materials mod. Recipes that require silver, aluminium, stainless
+steel, titanium or tungsten steel use Fabric resource conditions and are
+loaded only when the corresponding conventional item tags are available;
+`aluminum`/`aluminium`, `stainlesssteel`/`stainless_steel`, and
+`tungstensteel`/`tungsten_steel` alternatives are supported. This prevents
+missing-material recipe registry crashes on minimal Fabric installations.
+The change is scoped to `version-src/26.3-fabric` and does not alter recipes
+for Forge or NeoForge targets.
+
+The produced addon JAR is copied into `build/libs/26.X/3.0.4/` in the Iron Tanks repository root. To run the game/server, install the matching BCCE Fabric JAR and its runtime dependencies (Fabric API and Team Reborn Energy).
+
+The generation-level `buildAndCollect` and top-level `build-all` still build the seven established Forge/NeoForge targets; `buildAllIncludingFabric` includes the Fabric preview. CI compiles Fabric against the same pinned **Modrinth Maven** release, with no separate BCCE checkout. Automatic release publication remains disabled for Fabric pending compile and gameplay smoke-test confirmation.
 
 ## Original Iron Tanks normal-tank behavior
 
@@ -85,7 +116,7 @@ their per-block storage capacity. They extend the native BCCE `BlockTank` and
   regular stacks. They remain independent from the original fluid storage
   behavior; in particular the Void tank cannot consume adjacent tank fluid.
 
-All seven targets have source-contract regression tests in
+All eight targets have source-contract regression tests in
 `scripts/tests/test_tank_parity.py`. These tests do not replace in-game
 GameTests or real server/client smoke tests.
 
@@ -142,7 +173,7 @@ pipeline. **Publishing a GitHub Release** with a tag matching
 1. Source, version, Gradle wrapper, project and token validation.
 2. Pinned localization checkout and parallel builds of `legacy`,
    `modern` and `26.X` generations.
-3. Verification that all seven production JARs contain the exact external
+3. Verification that all seven released JARs contain the exact external
    translations, Guide Book language index and original English resources.
 4. **Sequential** publishing of 1.19.2 Forge, 1.20.1 Forge, 1.21.1 NeoForge,
    1.21.11 NeoForge, 26.1.2 NeoForge, 26.2 NeoForge and 26.3 NeoForge to
@@ -151,7 +182,7 @@ pipeline. **Publishing a GitHub Release** with a tag matching
 
 Regular commits/PRs only run `.github/workflows/ci.yml`: they **never publish**.
 A failed build/verification blocks publication. Release targets are declared
-explicitly and checked against the Stonecutter target matrices.
+explicitly and checked against the Stonecutter target matrices. The eighth target (Fabric 26.3) is checked by CI but excluded from publishing.
 
 Before publishing, set these **GitHub Actions repository secrets** under
 `Settings → Secrets and variables → Actions`:
