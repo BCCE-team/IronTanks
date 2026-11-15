@@ -29,19 +29,18 @@ val targets = targetConfiguration.getProperty("targets")
     ?.split(',')?.map(String::trim)?.filter(String::isNotEmpty)
     ?: error("Missing non-empty targets in targets.properties")
 
-// Keep the established release matrix unchanged until the Maven-backed
-// Fabric preview passes a real compile and in-game smoke test.
-val releasedTargets = targets.filterNot { it.endsWith("-fabric") }
+// Every 26.X target is a release target, including the Fabric 26.3 addon.
 tasks.register("buildAndCollect") {
     group = "build"
-    description = "Build released 26.X NeoForge targets and collect jars"
-    dependsOn(releasedTargets.map { target -> ":$target:buildAndCollect" })
+    description = "Build all 26.X NeoForge and Fabric release targets and collect jars"
+    dependsOn(targets.map { target -> ":$target:buildAndCollect" })
 }
 
+// Preserve the existing developer command as a backward-compatible alias.
 tasks.register("buildAllIncludingFabric") {
     group = "build"
-    description = "Build every 26.X target, including Maven-backed Fabric preview"
-    dependsOn(targets.map { target -> ":$target:buildAndCollect" })
+    description = "Alias for buildAndCollect (all four 26.X release targets)"
+    dependsOn("buildAndCollect")
 }
 
 val activeProject = stonecutter.current!!.project

@@ -164,7 +164,7 @@ class LocalizationTests(unittest.TestCase):
         publish = (ROOT / '.github/workflows/publish.yml').read_text(encoding='utf-8')
         self.assertNotIn('Kira-NT/mc-publish', ci)
         self.assertIn('Kira-NT/mc-publish@v3', publish)
-        self.assertEqual(publish.count('uses: Kira-NT/mc-publish@v3'), 7)
+        self.assertEqual(publish.count('uses: Kira-NT/mc-publish@v3'), 8)
         self.assertIn('ref: ${{ needs.metadata.outputs.localizations_sha }}', publish)
         self.assertIn('MODRINTH_DEPENDENCIES:', publish)
         self.assertIn('CURSEFORGE_DEPENDENCIES:', publish)
@@ -173,6 +173,7 @@ class LocalizationTests(unittest.TestCase):
             self.assertIn(f'builds/{generation}/gradlew', ci)
         for target in ('26.1.2', '26.2', '26.3'):
             self.assertIn(f'Publish {target} NeoForge', publish)
+        self.assertIn('Publish 26.3 Fabric', publish)
 
 
 

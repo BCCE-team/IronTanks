@@ -297,9 +297,9 @@ class OriginalTankContracts(unittest.TestCase):
         self.assertIn('test_tank_parity.py', publish)
         for target in (t for t in TARGETS if t.startswith('26.') and t.endswith('neoforge')):
             self.assertIn('Publish '+target.split('-')[0]+' NeoForge', publish)
-        # Fabric remains outside auto-publication until its Maven-backed build passes gameplay smoke tests.
-        self.assertIn('26.3-fabric', publish)
-        self.assertEqual(publish.count('uses: Kira-NT/mc-publish@v3'), len(TARGETS) - 1)
+        # Fabric 26.3 is now the eighth published target.
+        self.assertIn('Publish 26.3 Fabric', publish)
+        self.assertEqual(publish.count('uses: Kira-NT/mc-publish@v3'), len(TARGETS))
 
 
 if __name__ == '__main__':

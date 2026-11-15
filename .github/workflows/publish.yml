@@ -56,6 +56,9 @@ jobs:
           python scripts/verify_port.py
           python -m unittest discover -s scripts/tests -p test_localization_packaging.py -v
           python -m unittest discover -s scripts/tests -p test_tank_parity.py -v
+          python -m unittest discover -s scripts/tests -p test_fabric_recipe_loading.py -v
+          python -m unittest discover -s scripts/tests -p test_fabric_gradle_resource_dependencies.py -v
+          python -m unittest discover -s scripts/tests -p test_release_publish_matrix.py -v
 
       - name: Validate Gradle wrappers
         uses: gradle/actions/wrapper-validation@v4
@@ -114,7 +117,7 @@ jobs:
             targets: '1.21.1-neoforge,1.21.11-neoforge'
           - generation: 26.X
             java: '25'
-            targets: '26.1.2-neoforge,26.2-neoforge,26.3-neoforge'
+            targets: '26.1.2-neoforge,26.2-neoforge,26.3-neoforge,26.3-fabric'
     steps:
       - name: Checkout tagged Iron Tanks sources
         uses: actions/checkout@v4
@@ -175,6 +178,9 @@ jobs:
               --english source-shared/src/main/resources/assets/irontanks/lang/en_us.json \
               --english-guide source-shared/src/main/resources/assets/irontanks/guide/text/en_us.json \
               --jar "$jar"
+            if [[ "$target" == '26.3-fabric' ]]; then
+              python scripts/verify_fabric_release_jar.py --jar "$jar" --version "$TAG"
+            fi
             cp "$jar" "release/$GENERATION/"
           done
 
@@ -407,6 +413,39 @@ jobs:
           curseforge-token: ${{ secrets.CURSEFORGE_TOKEN }}
           curseforge-changelog: ${{ github.event.release.body }}
           curseforge-dependencies: ${{ env.CURSEFORGE_DEPENDENCIES }}
+
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          github-tag: ${{ github.event.release.tag_name }}
+          github-changelog: ''
+
+      - name: Wait 1 minute before 26.3 Fabric
+        run: sleep "$PUBLISH_DELAY_SECONDS"
+
+      - name: Publish 26.3 Fabric
+        uses: Kira-NT/mc-publish@v3
+        with:
+          files: release/IronTanks-Community-Edition-${{ github.event.release.tag_name }}+26.3+fabric.jar
+          name: ${{ github.event.release.tag_name }}+26.3+fabric
+          version: ${{ github.event.release.tag_name }}+26.3+fabric
+          version-type: release
+          loaders: fabric
+          game-versions: 26.3
+          game-version-filter: none
+          environment: client | server
+
+          modrinth-id: ${{ env.MODRINTH_PROJECT_ID }}
+          modrinth-token: ${{ secrets.MODRINTH_TOKEN }}
+          modrinth-changelog: ${{ github.event.release.body }}
+          modrinth-dependencies: |
+            z3Aj5eOl(required)
+            fabric-api(required)
+
+          curseforge-id: ${{ env.CURSEFORGE_PROJECT_ID }}
+          curseforge-token: ${{ secrets.CURSEFORGE_TOKEN }}
+          curseforge-changelog: ${{ github.event.release.body }}
+          curseforge-dependencies: |
+            1592400(required)
+            306612(required)
 
           github-token: ${{ secrets.GITHUB_TOKEN }}
           github-tag: ${{ github.event.release.tag_name }}
