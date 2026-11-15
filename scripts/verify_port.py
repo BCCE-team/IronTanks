@@ -338,8 +338,9 @@ def validate_build_files() -> None:
         fail('Forge BCCE Maven dependency is not deobfuscated')
     fabric = (ROOT / 'build-logic/fabric-target.gradle').read_text(encoding='utf-8')
     for token in ('sourceLayoutScript', 'prepareEffectiveSource', 'stageIronTanksLocalizations',
-                  "includeGroup 'maven.modrinth'", "requiredProperty('buildcraft.maven_version')",
-                  'implementation bcceCoordinate', 'verifyBCCE263FabricArtifact',
+                  "includeGroup 'bcce.github.release'", "requiredProperty('buildcraft.sha256')",
+                  "metadataSources { artifact() }", 'implementation bcceCoordinate',
+                  'verifyBCCE263FabricArtifact', 'SHA-256',
                   "tasks.register('buildAndCollect'"):
         if token not in fabric:
             fail(f'Fabric build logic missing {token!r}')
@@ -366,8 +367,8 @@ def main() -> None:
     props = load_properties()
     if prop(props, '1.19.2-forge', 'mod.license') != 'MIT':
         fail('ITCE must preserve the original MIT license')
-    if prop(props, '26.3-fabric', 'buildcraft.maven_version') != 'XTATlTsu':
-        fail('Fabric 26.3 BCCE dependency must use the pinned Modrinth version ID XTATlTsu')
+    if prop(props, '26.3-fabric', 'buildcraft.sha256') != '38b3ebdb7bf0b1f2b145fd82ce23604c123d0c5e5e1e50b8206b81a6e888ae51':
+        fail('Fabric 26.3 BCCE GitHub Release artifact must be pinned to its published SHA-256')
     if prop(props, '1.19.2-forge', 'deps.buildcraft.modrinth_project') != 'z3Aj5eOl':
         fail('BCCE Modrinth Maven project ID must remain pinned to z3Aj5eOl')
     for target in target_ids(props):

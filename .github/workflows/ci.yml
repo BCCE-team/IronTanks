@@ -46,6 +46,9 @@ jobs:
       - name: Test original Iron Tanks normal-tank contract across targets
         run: python -m unittest discover -s scripts/tests -p test_tank_parity.py -v
 
+      - name: Test pinned BCCE Fabric GitHub release dependency
+        run: python -m unittest discover -s scripts/tests -p test_fabric_bcce_release_dependency.py -v
+
       - name: Test Fabric recipes, Gradle source dependencies and release matrix
         run: |
           python -m unittest discover -s scripts/tests -p test_fabric_recipe_loading.py -v

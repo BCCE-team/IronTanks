@@ -278,11 +278,12 @@ class OriginalTankContracts(unittest.TestCase):
         gradle = (ROOT/'build-logic/fabric-target.gradle').read_text(encoding='utf-8')
         self.assertIn('implementation bcceCoordinate', gradle)
         self.assertIn('stageIronTanksLocalizations', gradle)
-        self.assertIn("includeGroup 'maven.modrinth'", gradle)
-        self.assertIn("requiredProperty('buildcraft.maven_version')", gradle)
+        self.assertIn("includeGroup 'bcce.github.release'", gradle)
+        self.assertIn("requiredProperty('buildcraft.sha256')", gradle)
+        self.assertIn("metadataSources { artifact() }", gradle)
         self.assertIn('verifyBCCE263FabricArtifact', gradle)
         self.assertNotIn('irontanksBCCE263FabricJar', gradle)
-        self.assertEqual(self.config['target.26.3-fabric.buildcraft.maven_version'], 'XTATlTsu')
+        self.assertEqual(self.config['target.26.3-fabric.buildcraft.sha256'], '38b3ebdb7bf0b1f2b145fd82ce23604c123d0c5e5e1e50b8206b81a6e888ae51')
 
     def test_release_ci_and_toolchains_cover_new_targets(self):
         ci = (ROOT/'.github/workflows/ci.yml').read_text(encoding='utf-8')

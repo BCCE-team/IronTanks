@@ -1,3 +1,5 @@
+import java.security.MessageDigest
+
 /* Fabric 26.3 adapter. Retain the shared 14-class Iron Tanks gameplay implementation. */
 def targetName = project.name
 def buildGeneration = '26.X'
@@ -106,18 +108,39 @@ sourceSets {
 }
 repositories {
     maven { name = 'FabricMC'; url = 'https://maven.fabricmc.net/' }
+    // BCCE 8.0.30 Fabric is a published GitHub Release asset, but its pinned
+    // Modrinth Maven version ID is not resolvable on clean GitHub Actions.
+    // Resolve the exact release JAR as an artifact-only Ivy dependency. The
+    // metadata-less repository is exclusive to this private synthetic group.
     exclusiveContent {
         forRepository {
-            maven { name = 'Modrinth'; url = 'https://api.modrinth.com/maven' }
+            ivy {
+                name = 'BCCE GitHub Releases'
+                url = 'https://github.com/BCCE-team/BuildCraft/releases/download'
+                patternLayout {
+                    artifact '[revision]/BuildCraft-Community-Edition-[revision]+26.3+fabric.[ext]'
+                }
+                metadataSources { artifact() }
+            }
         }
-        filter { includeGroup 'maven.modrinth' }
+        filter { includeGroup 'bcce.github.release' }
     }
     mavenCentral()
 }
 
-// The exact BCCE build is pinned by Modrinth version ID, not a mutable
-// version alias. Do not accidentally substitute the NeoForge 26.3 artifact.
-def bcceCoordinate = "maven.modrinth:${requiredProperty('deps.buildcraft.modrinth_project')}:${requiredProperty('buildcraft.maven_version')}"
+// Pin the canonical BuildCraft GitHub release and the asset SHA-256. This
+// avoids depending on Modrinth Maven's availability or indexing state.
+// Never substitute the NeoForge 26.3 artifact or a mutable 'latest' alias.
+def bcceExpectedVersion = requiredProperty('buildcraft.version')
+def bcceReleaseTag = bcceExpectedVersion.tokenize('+').first()
+if (bcceExpectedVersion != "${bcceReleaseTag}+${minecraftVersion}+fabric") {
+    throw new GradleException("BCCE Fabric version must be '${bcceReleaseTag}+${minecraftVersion}+fabric', found '${bcceExpectedVersion}'")
+}
+def bcceExpectedSha256 = requiredProperty('buildcraft.sha256')
+if (!(bcceExpectedSha256 ==~ /[0-9a-f]{64}/)) {
+    throw new GradleException('Invalid pinned SHA-256 for the BCCE 26.3 Fabric release JAR')
+}
+def bcceCoordinate = "bcce.github.release:buildcraft:${bcceReleaseTag}@jar"
 configurations {
     bcceFabricArtifact {
         canBeResolved = true
@@ -152,15 +175,27 @@ dependencies {
     compileOnly 'javax.annotation:javax.annotation-api:1.3.2'
     compileOnly 'com.google.code.findbugs:jsr305:3.0.2'
 }
-logger.lifecycle("Iron Tanks ${targetName}: BCCE Fabric via Modrinth Maven ${bcceCoordinate}")
+logger.lifecycle("Iron Tanks ${targetName}: BCCE Fabric via GitHub Release ${bcceCoordinate}")
 
-// Fail with an actionable message if the supplied Modrinth version ID points
-// to another loader/Minecraft version. The artifact has to be a Fabric BCCE JAR.
+// Fail with an actionable message if the pinned release is replaced,
+// corrupted, or targets a different loader/Minecraft version.
 def verifyBCCE263FabricArtifact = tasks.register('verifyBCCE263FabricArtifact') {
     group = 'verification'
-    description = 'Verify the pinned Modrinth BCCE artifact targets Fabric 26.3'
+    description = 'Verify the exact BCCE GitHub release JAR SHA-256 and Fabric 26.3 metadata'
     doLast {
         File artifact = configurations.bcceFabricArtifact.singleFile
+        def digest = MessageDigest.getInstance('SHA-256')
+        artifact.withInputStream { stream ->
+            byte[] chunk = new byte[65536]
+            int length
+            while ((length = stream.read(chunk)) != -1) {
+                digest.update(chunk, 0, length)
+            }
+        }
+        def actualSha256 = digest.digest().encodeHex().toString()
+        if (actualSha256 != bcceExpectedSha256) {
+            throw new GradleException("Unexpected BCCE Fabric JAR SHA-256 for ${bcceCoordinate}: expected ${bcceExpectedSha256}, got ${actualSha256}")
+        }
         try (def jar = new java.util.zip.ZipFile(artifact)) {
             def meta = jar.getEntry('fabric.mod.json')
             if (meta == null) {
@@ -168,7 +203,7 @@ def verifyBCCE263FabricArtifact = tasks.register('verifyBCCE263FabricArtifact') 
             }
             def json = new groovy.json.JsonSlurper().parseText(jar.getInputStream(meta).getText('UTF-8'))
             if (json.id != 'buildcraftlib' || json.depends?.minecraft != minecraftVersion ||
-                !(json.entrypoints?.main instanceof List)) {
+                json.version != bcceExpectedVersion || !(json.entrypoints?.main instanceof List)) {
                 throw new GradleException("BCCE ${bcceCoordinate} is not the expected BCCE Fabric ${minecraftVersion} build")
             }
         }

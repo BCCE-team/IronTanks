@@ -56,6 +56,7 @@ jobs:
           python scripts/verify_port.py
           python -m unittest discover -s scripts/tests -p test_localization_packaging.py -v
           python -m unittest discover -s scripts/tests -p test_tank_parity.py -v
+          python -m unittest discover -s scripts/tests -p test_fabric_bcce_release_dependency.py -v
           python -m unittest discover -s scripts/tests -p test_fabric_recipe_loading.py -v
           python -m unittest discover -s scripts/tests -p test_fabric_gradle_resource_dependencies.py -v
           python -m unittest discover -s scripts/tests -p test_release_publish_matrix.py -v
